@@ -1,40 +1,35 @@
 # Block Aligner
 
-KiCad PCB Editor action plugin that copies the relative footprint positions and
-orientations from one selected block to one or more selected destination blocks.
+KiCad PCB Editor action plugin that copies relative footprint positions and
+orientations from one selected reference block to one or more destination blocks.
 
-The current version moves footprints only. It does not modify tracks, zones, nets,
-or schematic files. The **Vista previa** button temporarily moves the footprints
-and lets you apply or cancel the result before finalizing it.
+## Features
 
-Before moving anything, the plugin validates every destination and asks for
-confirmation. Invalid destinations are rejected without changing the board.
+- **Component Matching**: Matches components by value, library footprint, pad count, and internal block connectivity. Net names and net codes are ignored, so equivalent blocks can use different nets.
+- **Auto-Discovery**: One-click **Auto-detectar** scans the entire board to automatically identify all matching multi-channel blocks (via hierarchical sheets or connectivity graphs).
+- **Error Inspector**: Detailed breakdown of validation mismatches (**Detalles error**), listing missing, extra, locked, or mismatched components.
+- **Anchor Point Selection**: Choose between aligning using the **geometric centroid** (default) or a **specific key footprint** (e.g. `U1` $\rightarrow$ `U2`) as the fixed placement origin.
+- **Rigid Block Rotation**: Supports **0° (default)**, **90°**, **180°**, and **270°** rotation per destination block, rotating both the relative block geometry and individual footprint orientations in lockstep.
+- **Native Grouping (PCB_GROUP)**: Option to automatically bundle aligned footprints into native KiCad groups upon applying.
+- **Interactive "Ver en PCB"**: Highlight and select reference or destination footprints directly in KiCad PCB Editor with a button or by double-clicking a table row.
+- **Safe Transactional Preview**: The **Vista previa** button temporarily renders the footprints in their calculated positions on the PCB and lets you confirm or cancel (reverting to original positions and orientations).
 
 ## Usage
 
-1. Select all footprints in the reference block.
-2. Run **Block Aligner** from the PCB Editor action-plugin menu.
+1. Select all footprints in the reference block within KiCad PCB Editor.
+2. Run **Block Aligner** from the PCB Editor toolbar or Tools menu.
 3. Click **Capturar referencia**.
-4. Select one destination block and click **Añadir destino**.
-5. Repeat for each destination block.
-6. To remove an incorrect destination, select it in the list and click
-   **Eliminar destino**.
-7. Click **Vista previa**, inspect the temporary positions, then choose **Yes**
-   to apply or **No** to cancel.
-
-The plugin also adds a **Block Aligner** button to the PCB Editor toolbar.
-
-Components are matched by value, library footprint, pad count, and their
-connectivity to other components inside the block. Net names and net codes are
-ignored, so equivalent blocks can use different nets. If two components still
-have exactly the same circuit role, their local position is used as a fallback.
+4. *(Optional)* Select an **Anchor component** from the dropdown if you want to align relative to a specific part instead of the block's centroid.
+5. Click **Auto-detectar** to find all repeated blocks on the PCB automatically, or select a block in PCB Editor and click **Añadir selección**.
+6. *(Optional)* Select a destination row in the table and adjust its **Rotación** (`0°`, `90°`, `180°`, `270°`). If any block has errors, click **Detalles error** to inspect the cause.
+7. Click **Vista previa**, inspect the temporary positions in KiCad, and confirm to apply or cancel to restore.
 
 ## Installation
 
-Copy this directory to:
+Create a symbolic link (recommended for live development) or copy this directory to:
 
 ```text
-~/.local/share/kicad/10.0/3rdparty/plugins/
+~/.local/share/kicad/10.0/3rdparty/plugins/Block_Aligner
 ```
 
-Restart KiCad after installation.
+Restart KiCad PCB Editor after installation.
