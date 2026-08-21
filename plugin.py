@@ -114,7 +114,7 @@ def ordered_components(footprints, center, block):
     return result
 
 
-def plan_block(reference, target):
+def align_block(reference, target):
     ref_center = centroid(reference)
     target_center = centroid(target)
     ref_groups = ordered_components(reference, ref_center, reference)
@@ -128,7 +128,7 @@ def plan_block(reference, target):
         if len(ref_parts) != len(target_parts):
             return False, "La cantidad de componentes equivalentes no coincide."
 
-    plan = []
+    moved = []
     for key, ref_parts in ref_groups.items():
         for ref_fp, target_fp in zip(ref_parts, target_groups[key]):
             ref_x, ref_y = position(ref_fp)
@@ -138,9 +138,11 @@ def plan_block(reference, target):
                 return False, "El footprint {} está bloqueado.".format(
                     target_fp.GetReference()
                 )
-            plan.append((target_fp, new_x, new_y, ref_fp))
+            set_position(target_fp, new_x, new_y)
+            set_orientation(target_fp, ref_fp)
+            moved.append(target_fp.GetReference())
 
-    return True, plan
+    return True, "Alineados {} footprints.".format(len(moved))
 
 
 class BlockAlignerDialog(wx.Dialog):
@@ -212,36 +214,18 @@ class BlockAlignerDialog(wx.Dialog):
             wx.MessageBox("Captura una referencia y añade al menos un destino.", "Block Aligner")
             return
         errors = []
-        plans = []
+        aligned = 0
         for index, target in enumerate(self.targets, 1):
-            ok, result = plan_block(self.reference, target)
+            ok, message = align_block(self.reference, target)
             if ok:
-                plans.append(result)
+                aligned += 1
             else:
-                errors.append("Destino {}: {}".format(index, result))
-
-        if errors:
-            wx.MessageBox(
-                "No se aplicaron cambios.\n\n{}".format("\n".join(errors)),
-                "Block Aligner",
-            )
-            return
-
-        commit = pcbnew.BOARD_COMMIT(self.board)
-        moved = 0
-        for block_plan in plans:
-            for target_fp, x, y, source_fp in block_plan:
-                commit.Modify(target_fp)
-                set_position(target_fp, x, y)
-                set_orientation(target_fp, source_fp)
-                moved += 1
-        if moved:
-            commit.Push("Align repeated blocks")
+                errors.append("Destino {}: {}".format(index, message))
         pcbnew.Refresh()
-        wx.MessageBox(
-            "{} footprints alineados.\nPuedes deshacerlo con Ctrl+Z.".format(moved),
-            "Block Aligner",
-        )
+        if errors:
+            wx.MessageBox("{} alineados.\n\n{}".format(aligned, "\n".join(errors)), "Block Aligner")
+        else:
+            wx.MessageBox("{} bloques alineados correctamente.".format(aligned), "Block Aligner")
 
     def clear(self, _event):
         self.reference = []
