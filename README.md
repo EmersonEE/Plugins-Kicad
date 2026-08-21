@@ -4,7 +4,8 @@ KiCad PCB Editor action plugin that copies the relative footprint positions and
 orientations from one selected block to one or more selected destination blocks.
 
 The current version moves footprints only. It does not modify tracks, zones, nets,
-or schematic files.
+or schematic files. The **Vista previa** button temporarily moves the footprints
+and lets you apply or cancel the result before finalizing it.
 
 Before moving anything, the plugin validates every destination and asks for
 confirmation. Invalid destinations are rejected without changing the board.
@@ -18,7 +19,10 @@ confirmation. Invalid destinations are rejected without changing the board.
 5. Repeat for each destination block.
 6. To remove an incorrect destination, select it in the list and click
    **Eliminar destino**.
-7. Click **Alinear destinos**.
+7. Click **Vista previa**, inspect the temporary positions, then choose **Yes**
+   to apply or **No** to cancel.
+
+The plugin also adds a **Block Aligner** button to the PCB Editor toolbar.
 
 Components are matched by value, library footprint, pad count, and their
 connectivity to other components inside the block. Net names and net codes are

@@ -114,7 +114,7 @@ def ordered_components(footprints, center, block):
     return result
 
 
-def align_block(reference, target):
+def plan_block(reference, target):
     ref_center = centroid(reference)
     target_center = centroid(target)
     ref_groups = ordered_components(reference, ref_center, reference)
@@ -128,7 +128,7 @@ def align_block(reference, target):
         if len(ref_parts) != len(target_parts):
             return False, "La cantidad de componentes equivalentes no coincide."
 
-    moved = []
+    plan = []
     for key, ref_parts in ref_groups.items():
         for ref_fp, target_fp in zip(ref_parts, target_groups[key]):
             ref_x, ref_y = position(ref_fp)
@@ -138,11 +138,15 @@ def align_block(reference, target):
                 return False, "El footprint {} está bloqueado.".format(
                     target_fp.GetReference()
                 )
-            set_position(target_fp, new_x, new_y)
-            set_orientation(target_fp, ref_fp)
-            moved.append(target_fp.GetReference())
+            plan.append((target_fp, new_x, new_y, ref_fp))
 
-    return True, "Alineados {} footprints.".format(len(moved))
+    return True, plan
+
+
+def apply_plan(plan):
+    for target_fp, x, y, source_fp in plan:
+        set_position(target_fp, x, y)
+        set_orientation(target_fp, source_fp)
 
 
 def validate_block(reference, target):
@@ -181,7 +185,7 @@ class BlockAlignerDialog(wx.Dialog):
         capture = wx.Button(self, label="Capturar referencia")
         add_target = wx.Button(self, label="Añadir destino")
         remove_target = wx.Button(self, label="Eliminar destino")
-        align = wx.Button(self, label="Alinear destinos")
+        align = wx.Button(self, label="Vista previa")
         clear = wx.Button(self, label="Limpiar")
         capture.Bind(wx.EVT_BUTTON, self.capture_reference)
         add_target.Bind(wx.EVT_BUTTON, self.add_target)
@@ -195,7 +199,7 @@ class BlockAlignerDialog(wx.Dialog):
                 "1. Selecciona todos los footprints del bloque de referencia.\n"
                 "2. Pulsa 'Capturar referencia'.\n"
                 "3. Selecciona cada bloque destino y añádelo.\n"
-                "4. Pulsa 'Alinear destinos'."
+                "4. Pulsa 'Vista previa' y confirma para aplicar."
             ),
         )
         buttons = wx.BoxSizer(wx.HORIZONTAL)
@@ -251,7 +255,7 @@ class BlockAlignerDialog(wx.Dialog):
             return
         errors = []
         summary = []
-        aligned = 0
+        plans = []
         for index, target in enumerate(self.targets, 1):
             validation_errors, matched = validate_block(self.reference, target)
             if validation_errors:
@@ -260,6 +264,11 @@ class BlockAlignerDialog(wx.Dialog):
                 )
             else:
                 summary.append("Destino {}: {} footprints coincidentes".format(index, matched))
+                ok, result = plan_block(self.reference, target)
+                if ok:
+                    plans.append(result)
+                else:
+                    errors.append("Destino {}: {}".format(index, result))
 
         if errors:
             wx.MessageBox(
@@ -268,32 +277,34 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
 
+        original_positions = []
+        for plan in plans:
+            for target_fp, x, y, source_fp in plan:
+                original_positions.append(
+                    (target_fp, position(target_fp), target_fp.GetOrientation())
+                )
+        for plan in plans:
+            apply_plan(plan)
+        pcbnew.Refresh()
+
         confirmation = wx.MessageDialog(
             self,
-            "Se moverán los siguientes bloques:\n\n{}\n\n¿Continuar?".format(
+            "Vista previa activa. Los footprints se muestran temporalmente en "
+            "sus nuevas posiciones.\n\n{}\n\n¿Aplicar estos cambios?".format(
                 "\n".join(summary)
             ),
-            "Validación de Block Aligner",
+            "Vista previa de Block Aligner",
             wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
         )
         proceed = confirmation.ShowModal() == wx.ID_YES
         confirmation.Destroy()
         if not proceed:
+            for target_fp, (x, y), old_orientation in original_positions:
+                set_position(target_fp, x, y)
+                target_fp.SetOrientation(old_orientation)
+            pcbnew.Refresh()
             return
-
-        errors = []
-        aligned = 0
-        for index, target in enumerate(self.targets, 1):
-            ok, message = align_block(self.reference, target)
-            if ok:
-                aligned += 1
-            else:
-                errors.append("Destino {}: {}".format(index, message))
-        pcbnew.Refresh()
-        if errors:
-            wx.MessageBox("{} alineados.\n\n{}".format(aligned, "\n".join(errors)), "Block Aligner")
-        else:
-            wx.MessageBox("{} bloques alineados correctamente.".format(aligned), "Block Aligner")
+        wx.MessageBox("Vista previa aplicada correctamente.", "Block Aligner")
 
     def clear(self, _event):
         self.reference = []
@@ -311,7 +322,7 @@ class BlockAlignerPlugin(pcbnew.ActionPlugin):
         self.name = "Block Aligner"
         self.category = "Layout Helper"
         self.description = "Alinea bloques repetidos copiando posiciones y orientaciones."
-        self.show_toolbar_button = False
+        self.show_toolbar_button = True
         self.icon_file_name = os.path.join(os.path.dirname(__file__), "icon.png")
 
     def Run(self):
