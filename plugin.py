@@ -175,122 +175,46 @@ def validate_block(reference, target):
 
 class BlockAlignerDialog(wx.Dialog):
     def __init__(self, parent, board):
-        super().__init__(
-            parent,
-            title="Block Aligner",
-            size=(720, 520),
-            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
-        )
-        self.SetMinSize((620, 440))
+        super().__init__(parent, title="Block Aligner", size=(650, 390))
         self.board = board
         self.reference = []
         self.targets = []
-        self.selected_target_index = -1
-        self.status = wx.StaticText(self, label="Listo para capturar el bloque de referencia.")
-        self.reference_status = wx.StaticText(self, label="No capturada")
-        self.target_list = wx.ListCtrl(
-            self,
-            style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_SUNKEN,
-        )
-        self.target_list.InsertColumn(0, "Destino", width=110)
-        self.target_list.InsertColumn(1, "Footprints", width=100)
-        self.target_list.InsertColumn(2, "Estado", width=430)
+        self.status = wx.StaticText(self, label="Selecciona footprints en la PCB.")
+        self.target_list = wx.ListBox(self, style=wx.LB_SINGLE)
 
         capture = wx.Button(self, label="Capturar referencia")
         add_target = wx.Button(self, label="Añadir destino")
         remove_target = wx.Button(self, label="Eliminar destino")
         align = wx.Button(self, label="Vista previa")
         clear = wx.Button(self, label="Limpiar")
-        self._set_button_art(capture, wx.ART_FIND)
-        self._set_button_art(add_target, wx.ART_NEW)
-        self._set_button_art(remove_target, wx.ART_DELETE)
-        self._set_button_art(align, wx.ART_FIND)
-        self._set_button_art(clear, wx.ART_REDO)
-        capture.SetToolTip("Captura los footprints seleccionados como referencia.")
-        add_target.SetToolTip("Añade la selección actual como un bloque destino.")
-        remove_target.SetToolTip("Elimina el destino seleccionado en la tabla.")
-        align.SetToolTip("Muestra una vista previa y permite aplicar o cancelar.")
-        clear.SetToolTip("Borra la referencia y todos los destinos de esta sesión.")
         capture.Bind(wx.EVT_BUTTON, self.capture_reference)
         add_target.Bind(wx.EVT_BUTTON, self.add_target)
         remove_target.Bind(wx.EVT_BUTTON, self.remove_target)
-        self.target_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.target_selected)
         align.Bind(wx.EVT_BUTTON, self.align_targets)
         clear.Bind(wx.EVT_BUTTON, self.clear)
 
         instructions = wx.StaticText(
             self,
             label=(
-                "Selecciona footprints en la PCB y usa los controles de cada sección. "
-                "Los destinos se validan antes de la vista previa."
+                "1. Selecciona todos los footprints del bloque de referencia.\n"
+                "2. Pulsa 'Capturar referencia'.\n"
+                "3. Selecciona cada bloque destino y añádelo.\n"
+                "4. Pulsa 'Vista previa' y confirma para aplicar."
             ),
         )
-        reference_box = wx.StaticBoxSizer(wx.VERTICAL, self, "Bloque de referencia")
-        reference_box.Add(
-            wx.StaticText(self, label="Footprints capturados:"), 0, wx.LEFT | wx.TOP, 6
-        )
-        reference_box.Add(self.reference_status, 0, wx.ALL, 6)
-        reference_box.Add(capture, 0, wx.ALL, 6)
-
-        targets_box = wx.StaticBoxSizer(wx.VERTICAL, self, "Bloques destino")
-        targets_box.Add(
-            wx.StaticText(
-                self,
-                label="Selecciona un bloque en la PCB y pulsa 'Añadir destino'.",
-            ),
-            0,
-            wx.ALL,
-            6,
-        )
-        targets_box.Add(self.target_list, 1, wx.EXPAND | wx.ALL, 6)
-        target_buttons = wx.BoxSizer(wx.HORIZONTAL)
-        target_buttons.Add(add_target, 0, wx.RIGHT, 6)
-        target_buttons.Add(remove_target, 0)
-        targets_box.Add(target_buttons, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-
-        actions_box = wx.StaticBoxSizer(wx.HORIZONTAL, self, "Acciones")
-        actions_box.Add(align, 0, wx.ALL, 6)
-        actions_box.Add(clear, 0, wx.ALL, 6)
-
-        status_box = wx.StaticBoxSizer(wx.VERTICAL, self, "Estado")
-        status_box.Add(self.status, 0, wx.ALL, 6)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        buttons.Add(capture, 0, wx.ALL, 4)
+        buttons.Add(add_target, 0, wx.ALL, 4)
+        buttons.Add(remove_target, 0, wx.ALL, 4)
+        buttons.Add(align, 0, wx.ALL, 4)
+        buttons.Add(clear, 0, wx.ALL, 4)
 
         layout = wx.BoxSizer(wx.VERTICAL)
-        layout.Add(instructions, 0, wx.EXPAND | wx.ALL, 10)
-        layout.Add(reference_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        layout.Add(targets_box, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        layout.Add(actions_box, 0, wx.ALIGN_LEFT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        layout.Add(status_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        layout.Add(instructions, 0, wx.ALL, 10)
+        layout.Add(self.status, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        layout.Add(self.target_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        layout.Add(buttons, 0, wx.ALIGN_CENTER | wx.ALL, 8)
         self.SetSizer(layout)
-
-    @staticmethod
-    def _set_button_art(button, art_id):
-        try:
-            bitmap = wx.ArtProvider.GetBitmap(art_id, wx.ART_BUTTON, (16, 16))
-            if bitmap.IsOk():
-                button.SetBitmap(bitmap)
-        except Exception:
-            pass
-
-    def _update_target_row(self, index):
-        target = self.targets[index]
-        errors, matched = validate_block(self.reference, target)
-        state = "Válido" if not errors else "; ".join(errors)
-        colour = wx.Colour(190, 235, 190) if not errors else wx.Colour(255, 210, 180)
-        self.target_list.SetItem(index, 1, str(len(target)))
-        self.target_list.SetItem(index, 2, state)
-        self.target_list.SetItemBackgroundColour(index, colour)
-
-    def _refresh_target_rows(self):
-        for index in range(len(self.targets)):
-            self._update_target_row(index)
-
-    def target_selected(self, event):
-        self.selected_target_index = event.GetIndex()
-        self.status.SetLabel(
-            "Destino {} seleccionado.".format(self.selected_target_index + 1)
-        )
-        event.Skip()
 
     def capture_reference(self, _event):
         selected = select_footprints(self.board)
@@ -298,9 +222,9 @@ class BlockAlignerDialog(wx.Dialog):
             wx.MessageBox("Selecciona el bloque de referencia primero.", "Block Aligner")
             return
         self.reference = selected
-        self.reference_status.SetLabel("{} footprints capturados".format(len(selected)))
-        self.status.SetLabel("Referencia capturada. Añade ahora los bloques destino.")
-        self._refresh_target_rows()
+        self.status.SetLabel(
+            "Referencia capturada: {} footprints.".format(len(selected))
+        )
 
     def add_target(self, _event):
         if not self.reference:
@@ -311,33 +235,19 @@ class BlockAlignerDialog(wx.Dialog):
             wx.MessageBox("Selecciona un bloque destino.", "Block Aligner")
             return
         self.targets.append(selected)
-        row = self.target_list.InsertItem(self.target_list.GetItemCount(), "Destino {}".format(len(self.targets)))
-        self.target_list.SetItem(row, 1, str(len(selected)))
-        self._update_target_row(row)
-        self.status.SetLabel(
-            "{} destinos añadidos. Revisa los estados antes de la vista previa.".format(
-                len(self.targets)
-            )
+        self.target_list.Append(
+            "Destino {}: {} footprints".format(len(self.targets), len(selected))
         )
+        self.status.SetLabel("Destinos añadidos: {}.".format(len(self.targets)))
 
     def remove_target(self, _event):
-        index = self.selected_target_index
-        if not 0 <= index < len(self.targets):
-            index = -1
-            for row in range(self.target_list.GetItemCount()):
-                if self.target_list.GetItemState(row, wx.LIST_STATE_SELECTED):
-                    index = row
-                    break
+        index = self.target_list.GetSelection()
         if index == wx.NOT_FOUND:
-            wx.MessageBox("Selecciona un destino de la tabla para eliminarlo.", "Block Aligner")
+            wx.MessageBox("Selecciona un destino de la lista para eliminarlo.", "Block Aligner")
             return
         self.target_list.Delete(index)
         del self.targets[index]
-        self.selected_target_index = -1
-        for row in range(index, len(self.targets)):
-            self.target_list.SetItem(row, 0, "Destino {}".format(row + 1))
-            self._update_target_row(row)
-        self.status.SetLabel("{} destinos añadidos.".format(len(self.targets)))
+        self.status.SetLabel("Destinos añadidos: {}.".format(len(self.targets)))
 
     def align_targets(self, _event):
         if not self.reference or not self.targets:
@@ -361,7 +271,6 @@ class BlockAlignerDialog(wx.Dialog):
                     errors.append("Destino {}: {}".format(index, result))
 
         if errors:
-            self.status.SetLabel("Hay destinos inválidos. Corrige la tabla antes de continuar.")
             wx.MessageBox(
                 "No se aplicaron cambios.\n\n{}".format("\n".join(errors)),
                 "Validación de Block Aligner",
@@ -394,18 +303,14 @@ class BlockAlignerDialog(wx.Dialog):
                 set_position(target_fp, x, y)
                 target_fp.SetOrientation(old_orientation)
             pcbnew.Refresh()
-            self.status.SetLabel("Vista previa cancelada. No se aplicaron cambios.")
             return
-        self.status.SetLabel("Vista previa aplicada correctamente.")
         wx.MessageBox("Vista previa aplicada correctamente.", "Block Aligner")
 
     def clear(self, _event):
         self.reference = []
         self.targets = []
-        self.selected_target_index = -1
-        self.target_list.DeleteAllItems()
-        self.reference_status.SetLabel("No capturada")
-        self.status.SetLabel("Sesión limpiada. Listo para capturar una referencia.")
+        self.target_list.Clear()
+        self.status.SetLabel("Selecciona footprints en la PCB.")
 
 
 class BlockAlignerPlugin(pcbnew.ActionPlugin):
