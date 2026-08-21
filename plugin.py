@@ -312,7 +312,11 @@ class BlockAlignerDialog(wx.Dialog):
         )
 
     def remove_target(self, _event):
-        index = self.target_list.GetFirstSelected()
+        index = self.target_list.GetNextItem(
+            -1,
+            wx.LIST_NEXT_ALL,
+            wx.LIST_STATE_SELECTED,
+        )
         if index == wx.NOT_FOUND:
             wx.MessageBox("Selecciona un destino de la tabla para eliminarlo.", "Block Aligner")
             return
@@ -386,7 +390,7 @@ class BlockAlignerDialog(wx.Dialog):
     def clear(self, _event):
         self.reference = []
         self.targets = []
-        self.target_list.Clear()
+        self.target_list.DeleteAllItems()
         self.reference_status.SetLabel("No capturada")
         self.status.SetLabel("Sesión limpiada. Listo para capturar una referencia.")
 
