@@ -6,6 +6,9 @@ orientations from one selected block to one or more selected destination blocks.
 The current version moves footprints only. It does not modify tracks, zones, nets,
 or schematic files.
 
+All footprint moves from one execution are stored as a single KiCad undo
+operation. Use the normal PCB Editor undo/redo commands (`Ctrl+Z`/`Ctrl+Y`).
+
 ## Usage
 
 1. Select all footprints in the reference block.
