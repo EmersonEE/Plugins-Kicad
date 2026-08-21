@@ -52,19 +52,163 @@ def rotate_point(dx, dy, degrees):
     return int(round(new_dx)), int(round(new_dy))
 
 
-def create_pcb_group(board, footprints, group_name="Bloque_Alineado"):
-    """Group footprints together as a native KiCad PCB_GROUP."""
-    if not hasattr(pcbnew, "PCB_GROUP") or not footprints:
+def create_pcb_group(board, items, group_name="Bloque_Alineado"):
+    """Group footprints, tracks, and vias together as a native KiCad PCB_GROUP."""
+    if not hasattr(pcbnew, "PCB_GROUP") or not items:
         return None
     try:
         group = pcbnew.PCB_GROUP(board)
         group.SetName(group_name)
-        for fp in footprints:
-            group.AddItem(fp)
+        for item in items:
+            group.AddItem(item)
         board.Add(group)
         return group
     except Exception:
         return None
+
+
+def collect_reference_tracks(board, reference):
+    """Find tracks, vias, and arcs associated with the reference block."""
+    if not board or not reference:
+        return []
+
+    # 1. Recolectar códigos de red de los pads de la referencia
+    ref_net_codes = set()
+    for fp in reference:
+        for pad in fp.Pads():
+            net_id = pad_net_id(pad)
+            if net_id not in (0, "", None, -1):
+                ref_net_codes.add(net_id)
+
+    # 2. Caja envolvente de los footprints de referencia con margen de 2.0 mm
+    margin = 2000000
+    xs = [position(fp)[0] for fp in reference]
+    ys = [position(fp)[1] for fp in reference]
+    min_x = min(xs) - margin
+    max_x = max(xs) + margin
+    min_y = min(ys) - margin
+    max_y = max(ys) + margin
+
+    def is_inside(x, y):
+        return min_x <= x <= max_x and min_y <= y <= max_y
+
+    collected = []
+    seen_ids = set()
+
+    for item in board.GetTracks():
+        # Si el usuario seleccionó la pista/vía explícitamente en el PCB Editor
+        try:
+            if item.IsSelected():
+                collected.append(item)
+                seen_ids.add(id(item))
+                continue
+        except Exception:
+            pass
+
+        # Verificar si pertenece a las redes de referencia o está dentro del área del bloque
+        start = item.GetStart()
+        end = item.GetEnd()
+        in_area = is_inside(start.x, start.y) and is_inside(end.x, end.y)
+        net_code = item.GetNetCode()
+
+        if in_area:
+            if not ref_net_codes or net_code in ref_net_codes or net_code in (0, -1):
+                if id(item) not in seen_ids:
+                    collected.append(item)
+                    seen_ids.add(id(item))
+
+    return collected
+
+
+def build_net_map(pairs):
+    """Build a mapping from reference NetCode -> destination NETINFO_ITEM."""
+    net_map = {}
+    for ref_fp, target_fp in pairs:
+        target_pads_by_num = {pad.GetNumber(): pad for pad in target_fp.Pads()}
+        for ref_pad in ref_fp.Pads():
+            ref_net_code = ref_pad.GetNetCode()
+            pad_num = ref_pad.GetNumber()
+            if pad_num in target_pads_by_num:
+                target_pad = target_pads_by_num[pad_num]
+                target_net = target_pad.GetNet()
+                if target_net is not None and ref_net_code not in net_map:
+                    net_map[ref_net_code] = target_net
+    return net_map
+
+
+def clone_and_transform_track(
+    board, item, ref_origin, target_origin, rotation, net_map
+):
+    """Clone a track, via, or arc, transform its geometry and assign mapped net."""
+    ax, ay = ref_origin
+    dx, dy = target_origin
+
+    item_class = item.GetClass()
+
+    def transform_pt(pt):
+        rel_x = pt.x - ax
+        rel_y = pt.y - ay
+        rot_x, rot_y = rotate_point(rel_x, rel_y, rotation)
+        return pcbnew.VECTOR2I(int(dx + rot_x), int(dy + rot_y))
+
+    target_net = net_map.get(item.GetNetCode(), None)
+
+    if item_class == "PCB_VIA":
+        via = pcbnew.PCB_VIA(board)
+        via.SetPosition(transform_pt(item.GetPosition()))
+        try:
+            via_w = item.GetFrontWidth()
+        except Exception:
+            try:
+                via_w = item.GetWidth(pcbnew.F_Cu)
+            except Exception:
+                via_w = item.GetWidth()
+        via.SetWidth(via_w)
+        via.SetDrill(item.GetDrill())
+        try:
+            via.SetViaType(item.GetViaType())
+        except Exception:
+            pass
+        try:
+            via.SetLayerPair(item.TopLayer(), item.BottomLayer())
+        except Exception:
+            try:
+                via.SetLayer(item.GetLayer())
+            except Exception:
+                pass
+        if target_net:
+            try:
+                via.SetNet(target_net)
+            except Exception:
+                pass
+        return via
+
+    elif item_class == "PCB_ARC":
+        arc = pcbnew.PCB_ARC(board)
+        arc.SetStart(transform_pt(item.GetStart()))
+        arc.SetMid(transform_pt(item.GetMid()))
+        arc.SetEnd(transform_pt(item.GetEnd()))
+        arc.SetWidth(item.GetWidth())
+        arc.SetLayer(item.GetLayer())
+        if target_net:
+            try:
+                arc.SetNet(target_net)
+            except Exception:
+                pass
+        return arc
+
+    else:  # Default PCB_TRACK
+        track = pcbnew.PCB_TRACK(board)
+        track.SetStart(transform_pt(item.GetStart()))
+        track.SetEnd(transform_pt(item.GetEnd()))
+        track.SetWidth(item.GetWidth())
+        track.SetLayer(item.GetLayer())
+        if target_net:
+            try:
+                track.SetNet(target_net)
+            except Exception:
+                pass
+        return track
 
 
 def set_orientation_with_rotation(footprint, source, rotation_degrees=0):
@@ -184,7 +328,14 @@ def ordered_components(footprints, center, block):
     return result
 
 
-def plan_block(reference, target, anchor_ref_name=None, rotation=0):
+def plan_block(
+    reference,
+    target,
+    anchor_ref_name=None,
+    rotation=0,
+    ref_tracks=None,
+    board=None,
+):
     ref_center = centroid(reference)
     target_center = centroid(target)
     ref_groups = ordered_components(reference, ref_center, reference)
@@ -226,7 +377,7 @@ def plan_block(reference, target, anchor_ref_name=None, rotation=0):
             ref_origin = ref_center
             target_origin = target_center
 
-    plan = []
+    fp_plan = []
     for ref_fp, target_fp in pairs:
         ref_x, ref_y = position(ref_fp)
         dx = ref_x - ref_origin[0]
@@ -238,13 +389,31 @@ def plan_block(reference, target, anchor_ref_name=None, rotation=0):
             return False, "El footprint {} está bloqueado.".format(
                 target_fp.GetReference()
             )
-        plan.append((target_fp, new_x, new_y, ref_fp, rotation))
+        fp_plan.append((target_fp, new_x, new_y, ref_fp, rotation))
 
-    return True, plan
+    cloned_tracks = []
+    if ref_tracks and board:
+        net_map = build_net_map(pairs)
+        for item in ref_tracks:
+            cloned = clone_and_transform_track(
+                board, item, ref_origin, target_origin, rotation, net_map
+            )
+            if cloned:
+                cloned_tracks.append(cloned)
+
+    return True, {
+        "footprint_plan": fp_plan,
+        "cloned_tracks": cloned_tracks,
+        "target_footprints": target,
+    }
 
 
-def apply_plan(plan):
-    for target_fp, x, y, source_fp, rotation in plan:
+def apply_plan(plan_result):
+    if isinstance(plan_result, dict):
+        fp_plan = plan_result.get("footprint_plan", [])
+    else:
+        fp_plan = plan_result
+    for target_fp, x, y, source_fp, rotation in fp_plan:
         set_position(target_fp, x, y)
         set_orientation_with_rotation(target_fp, source_fp, rotation)
 
@@ -695,13 +864,23 @@ class BlockAlignerDialog(wx.Dialog):
         separator = wx.StaticLine(self, wx.ID_ANY, style=wx.LI_HORIZONTAL)
         main_sizer.Add(separator, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
-        # Opción de agrupación nativa
+        # Opciones inferiores
         options_row = wx.BoxSizer(wx.HORIZONTAL)
         self.chk_create_groups = wx.CheckBox(
-            self, label="Agrupar componentes en KiCad tras alinear (PCB_GROUP)"
+            self, label="Agrupar componentes en KiCad (PCB_GROUP)"
         )
         self.chk_create_groups.SetValue(True)
-        options_row.Add(self.chk_create_groups, 0, wx.LEFT | wx.TOP | wx.BOTTOM, 6)
+        self.chk_replicate_tracks = wx.CheckBox(
+            self, label="Replicar pistas y vías de la referencia"
+        )
+        self.chk_replicate_tracks.SetValue(False)
+
+        options_row.Add(
+            self.chk_create_groups, 0, wx.RIGHT | wx.TOP | wx.BOTTOM, 12
+        )
+        options_row.Add(
+            self.chk_replicate_tracks, 0, wx.LEFT | wx.TOP | wx.BOTTOM, 6
+        )
         main_sizer.Add(options_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         bottom_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -863,10 +1042,14 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
         self.reference = selected
+        ref_tracks = collect_reference_tracks(self.board, selected)
         refs = sorted(fp.GetReference() for fp in selected)
         refs_str = format_references(selected, max_display=12)
+        track_info = (
+            f", {len(ref_tracks)} pistas/vías" if ref_tracks else ""
+        )
         self.ref_status.SetLabel(
-            f"✓ Referencia capturada: {len(selected)} footprints"
+            f"✓ Referencia capturada: {len(selected)} footprints{track_info}"
         )
         self.ref_details.SetLabel(f"Componentes: {refs_str}")
 
@@ -989,6 +1172,12 @@ class BlockAlignerDialog(wx.Dialog):
         summary = []
         plans = []
         anchor_name = self.anchor_choice.GetStringSelection()
+        replicate_tracks = self.chk_replicate_tracks.GetValue()
+        ref_tracks = (
+            collect_reference_tracks(self.board, self.reference)
+            if replicate_tracks
+            else []
+        )
 
         for index, entry in enumerate(self.targets, 1):
             target_fps = entry["footprints"]
@@ -999,19 +1188,23 @@ class BlockAlignerDialog(wx.Dialog):
                     "Destino {}: {}".format(index, "; ".join(validation_errors))
                 )
             else:
-                summary.append(
-                    "Destino {}: {} footprints coincidentes (Rotación: {}°)".format(
-                        index, matched, rot
-                    )
-                )
                 ok, result = plan_block(
                     self.reference,
                     target_fps,
                     anchor_ref_name=anchor_name,
                     rotation=rot,
+                    ref_tracks=ref_tracks,
+                    board=self.board,
                 )
                 if ok:
                     plans.append(result)
+                    track_count = len(result.get("cloned_tracks", []))
+                    track_info = (
+                        f", {track_count} pistas/vías" if track_count else ""
+                    )
+                    summary.append(
+                        f"Destino {index}: {matched} footprints{track_info} (Rotación: {rot}°)"
+                    )
                 else:
                     errors.append("Destino {}: {}".format(index, result))
 
@@ -1025,19 +1218,26 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
 
+        # Guardar posiciones y orientaciones originales para deshacer
         original_positions = []
         for plan in plans:
-            for target_fp, x, y, source_fp, rot in plan:
+            for target_fp, x, y, source_fp, rot in plan["footprint_plan"]:
                 original_positions.append(
                     (target_fp, position(target_fp), target_fp.GetOrientation())
                 )
+
+        # Aplicar alineación de footprints y crear pistas/vías clonadas
+        created_tracks = []
         for plan in plans:
-            apply_plan(plan)
+            apply_plan(plan["footprint_plan"])
+            for track in plan["cloned_tracks"]:
+                self.board.Add(track)
+                created_tracks.append(track)
         pcbnew.Refresh()
 
         confirmation = wx.MessageDialog(
             self,
-            "Vista previa activa. Los footprints se muestran temporalmente en "
+            "Vista previa activa. Los footprints y pistas/vías se muestran temporalmente en "
             "sus nuevas posiciones (Anclaje: {}, rotaciones aplicadas).\n\n{}\n\n¿Deseas aplicar estos cambios definitivamente?".format(
                 anchor_name, "\n".join(summary)
             ),
@@ -1047,31 +1247,44 @@ class BlockAlignerDialog(wx.Dialog):
         proceed = confirmation.ShowModal() == wx.ID_YES
         confirmation.Destroy()
         if not proceed:
+            # Restaurar footprints a posiciones originales
             for target_fp, (x, y), old_orientation in original_positions:
                 set_position(target_fp, x, y)
                 target_fp.SetOrientation(old_orientation)
+            # Eliminar pistas y vías creadas temporalmente
+            for track in created_tracks:
+                try:
+                    self.board.Remove(track)
+                except Exception:
+                    pass
             pcbnew.Refresh()
             self.summary_status.SetLabel(
-                "Vista previa cancelada. Posiciones restauradas."
+                "Vista previa cancelada. Posiciones y pistas restauradas."
             )
             return
+
+        # Aplicar agrupación nativa de KiCad si está habilitada
         if self.chk_create_groups.GetValue():
-            for index, entry in enumerate(self.targets, 1):
-                target_fps = entry["footprints"]
+            for index, plan in enumerate(plans, 1):
+                group_items = plan["target_footprints"] + plan["cloned_tracks"]
                 create_pcb_group(
                     self.board,
-                    target_fps,
+                    group_items,
                     group_name="Bloque_Destino_{}".format(index),
                 )
             pcbnew.Refresh()
 
+        total_tracks_count = len(created_tracks)
+        tracks_msg = (
+            f" y {total_tracks_count} pistas/vías replicadas"
+            if total_tracks_count
+            else ""
+        )
         self.summary_status.SetLabel(
-            "Alineación aplicada correctamente (grupos creados)."
-            if self.chk_create_groups.GetValue()
-            else "Alineación aplicada correctamente."
+            f"Alineación aplicada con éxito{tracks_msg}."
         )
         wx.MessageBox(
-            "Alineación aplicada con éxito.",
+            f"Alineación aplicada con éxito{tracks_msg}.",
             "Block Aligner",
             wx.OK | wx.ICON_INFORMATION,
         )

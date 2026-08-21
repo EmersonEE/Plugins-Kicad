@@ -10,9 +10,10 @@ orientations from one selected reference block to one or more destination blocks
 - **Error Inspector**: Detailed breakdown of validation mismatches (**Detalles error**), listing missing, extra, locked, or mismatched components.
 - **Anchor Point Selection**: Choose between aligning using the **geometric centroid** (default) or a **specific key footprint** (e.g. `U1` $\rightarrow$ `U2`) as the fixed placement origin.
 - **Rigid Block Rotation**: Supports **0° (default)**, **90°**, **180°**, and **270°** rotation per destination block, rotating both the relative block geometry and individual footprint orientations in lockstep.
-- **Native Grouping (PCB_GROUP)**: Option to automatically bundle aligned footprints into native KiCad groups upon applying.
+- **Tracks & Vias Replication**: Automatically clones, rotates, and places copper tracks (`PCB_TRACK`, `PCB_ARC`) and vias (`PCB_VIA`) from the reference block into all destination blocks, seamlessly remapping internal nets to the destination pins.
+- **Native Grouping (PCB_GROUP)**: Option to automatically bundle aligned footprints, tracks, and vias into native KiCad groups upon applying.
 - **Interactive "Ver en PCB"**: Highlight and select reference or destination footprints directly in KiCad PCB Editor with a button or by double-clicking a table row.
-- **Safe Transactional Preview**: The **Vista previa** button temporarily renders the footprints in their calculated positions on the PCB and lets you confirm or cancel (reverting to original positions and orientations).
+- **Safe Transactional Preview**: The **Vista previa** button temporarily renders the footprints and replicated tracks/vias in their calculated positions on the PCB and lets you confirm or cancel (reverting cleanly to original positions and removing preview tracks).
 
 ## Usage
 
