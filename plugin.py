@@ -175,7 +175,13 @@ def validate_block(reference, target):
 
 class BlockAlignerDialog(wx.Dialog):
     def __init__(self, parent, board):
-        super().__init__(parent, title="Block Aligner", size=(650, 390))
+        super().__init__(
+            parent,
+            title="Block Aligner",
+            size=(850, 500),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+        )
+        self.SetMinSize((650, 420))
         self.board = board
         self.reference = []
         self.targets = []
