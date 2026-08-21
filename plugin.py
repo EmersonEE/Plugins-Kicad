@@ -215,6 +215,7 @@ class BlockAlignerDialog(wx.Dialog):
         add_target.Bind(wx.EVT_BUTTON, self.add_target)
         remove_target.Bind(wx.EVT_BUTTON, self.remove_target)
         self.target_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.target_selected)
+        self.target_list.Bind(wx.EVT_LIST_ITEM_FOCUSED, self.target_selected)
         align.Bind(wx.EVT_BUTTON, self.align_targets)
         clear.Bind(wx.EVT_BUTTON, self.clear)
 
@@ -292,6 +293,18 @@ class BlockAlignerDialog(wx.Dialog):
         )
         event.Skip()
 
+    def _selected_target_index(self):
+        index = self.target_list.GetFocusedItem()
+        if 0 <= index < len(self.targets):
+            return index
+        index = self.selected_target_index
+        if 0 <= index < len(self.targets):
+            return index
+        for row in range(self.target_list.GetItemCount()):
+            if self.target_list.GetItemState(row, wx.LIST_STATE_SELECTED):
+                return row
+        return wx.NOT_FOUND
+
     def capture_reference(self, _event):
         selected = select_footprints(self.board)
         if not selected:
@@ -321,13 +334,7 @@ class BlockAlignerDialog(wx.Dialog):
         )
 
     def remove_target(self, _event):
-        index = self.selected_target_index
-        if not 0 <= index < len(self.targets):
-            index = -1
-            for row in range(self.target_list.GetItemCount()):
-                if self.target_list.GetItemState(row, wx.LIST_STATE_SELECTED):
-                    index = row
-                    break
+        index = self._selected_target_index()
         if index == wx.NOT_FOUND:
             wx.MessageBox("Selecciona un destino de la tabla para eliminarlo.", "Block Aligner")
             return
