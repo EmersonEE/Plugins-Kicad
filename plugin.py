@@ -185,6 +185,7 @@ class BlockAlignerDialog(wx.Dialog):
         self.board = board
         self.reference = []
         self.targets = []
+        self.selected_target_index = -1
         self.status = wx.StaticText(self, label="Listo para capturar el bloque de referencia.")
         self.reference_status = wx.StaticText(self, label="No capturada")
         self.target_list = wx.ListCtrl(
@@ -213,6 +214,7 @@ class BlockAlignerDialog(wx.Dialog):
         capture.Bind(wx.EVT_BUTTON, self.capture_reference)
         add_target.Bind(wx.EVT_BUTTON, self.add_target)
         remove_target.Bind(wx.EVT_BUTTON, self.remove_target)
+        self.target_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self.target_selected)
         align.Bind(wx.EVT_BUTTON, self.align_targets)
         clear.Bind(wx.EVT_BUTTON, self.clear)
 
@@ -283,6 +285,13 @@ class BlockAlignerDialog(wx.Dialog):
         for index in range(len(self.targets)):
             self._update_target_row(index)
 
+    def target_selected(self, event):
+        self.selected_target_index = event.GetIndex()
+        self.status.SetLabel(
+            "Destino {} seleccionado.".format(self.selected_target_index + 1)
+        )
+        event.Skip()
+
     def capture_reference(self, _event):
         selected = select_footprints(self.board)
         if not selected:
@@ -312,16 +321,19 @@ class BlockAlignerDialog(wx.Dialog):
         )
 
     def remove_target(self, _event):
-        index = self.target_list.GetNextItem(
-            -1,
-            wx.LIST_NEXT_ALL,
-            wx.LIST_STATE_SELECTED,
-        )
+        index = self.selected_target_index
+        if not 0 <= index < len(self.targets):
+            index = -1
+            for row in range(self.target_list.GetItemCount()):
+                if self.target_list.GetItemState(row, wx.LIST_STATE_SELECTED):
+                    index = row
+                    break
         if index == wx.NOT_FOUND:
             wx.MessageBox("Selecciona un destino de la tabla para eliminarlo.", "Block Aligner")
             return
         self.target_list.Delete(index)
         del self.targets[index]
+        self.selected_target_index = -1
         for row in range(index, len(self.targets)):
             self.target_list.SetItem(row, 0, "Destino {}".format(row + 1))
             self._update_target_row(row)
@@ -390,6 +402,7 @@ class BlockAlignerDialog(wx.Dialog):
     def clear(self, _event):
         self.reference = []
         self.targets = []
+        self.selected_target_index = -1
         self.target_list.DeleteAllItems()
         self.reference_status.SetLabel("No capturada")
         self.status.SetLabel("Sesión limpiada. Listo para capturar una referencia.")
