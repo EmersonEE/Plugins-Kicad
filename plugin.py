@@ -179,8 +179,8 @@ class BlockAlignerDialog(wx.Dialog):
         self.target_list = wx.ListBox(self, style=wx.LB_SINGLE)
 
         capture = wx.Button(self, label="Capturar referencia")
-        add_target = wx.Button(self, label="Añadir destino seleccionado")
-        remove_target = wx.Button(self, label="Eliminar destino seleccionado")
+        add_target = wx.Button(self, label="Añadir destino")
+        remove_target = wx.Button(self, label="Eliminar destino")
         align = wx.Button(self, label="Alinear destinos")
         clear = wx.Button(self, label="Limpiar")
         capture.Bind(wx.EVT_BUTTON, self.capture_reference)
