@@ -16,7 +16,9 @@ confirmation. Invalid destinations are rejected without changing the board.
 3. Click **Capturar referencia**.
 4. Select one destination block and click **Añadir destino seleccionado**.
 5. Repeat for each destination block.
-6. Click **Alinear destinos**.
+6. To remove an incorrect destination, select it in the list and click
+   **Eliminar destino seleccionado**.
+7. Click **Alinear destinos**.
 
 Components are matched by value, library footprint, pad count, and their
 connectivity to other components inside the block. Net names and net codes are

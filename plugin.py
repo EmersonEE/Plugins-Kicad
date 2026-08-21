@@ -171,7 +171,7 @@ def validate_block(reference, target):
 
 class BlockAlignerDialog(wx.Dialog):
     def __init__(self, parent, board):
-        super().__init__(parent, title="Block Aligner", size=(510, 390))
+        super().__init__(parent, title="Block Aligner", size=(650, 390))
         self.board = board
         self.reference = []
         self.targets = []
@@ -180,10 +180,12 @@ class BlockAlignerDialog(wx.Dialog):
 
         capture = wx.Button(self, label="Capturar referencia")
         add_target = wx.Button(self, label="Añadir destino seleccionado")
+        remove_target = wx.Button(self, label="Eliminar destino seleccionado")
         align = wx.Button(self, label="Alinear destinos")
         clear = wx.Button(self, label="Limpiar")
         capture.Bind(wx.EVT_BUTTON, self.capture_reference)
         add_target.Bind(wx.EVT_BUTTON, self.add_target)
+        remove_target.Bind(wx.EVT_BUTTON, self.remove_target)
         align.Bind(wx.EVT_BUTTON, self.align_targets)
         clear.Bind(wx.EVT_BUTTON, self.clear)
 
@@ -199,6 +201,7 @@ class BlockAlignerDialog(wx.Dialog):
         buttons = wx.BoxSizer(wx.HORIZONTAL)
         buttons.Add(capture, 0, wx.ALL, 4)
         buttons.Add(add_target, 0, wx.ALL, 4)
+        buttons.Add(remove_target, 0, wx.ALL, 4)
         buttons.Add(align, 0, wx.ALL, 4)
         buttons.Add(clear, 0, wx.ALL, 4)
 
@@ -231,6 +234,15 @@ class BlockAlignerDialog(wx.Dialog):
         self.target_list.Append(
             "Destino {}: {} footprints".format(len(self.targets), len(selected))
         )
+        self.status.SetLabel("Destinos añadidos: {}.".format(len(self.targets)))
+
+    def remove_target(self, _event):
+        index = self.target_list.GetSelection()
+        if index == wx.NOT_FOUND:
+            wx.MessageBox("Selecciona un destino de la lista para eliminarlo.", "Block Aligner")
+            return
+        self.target_list.Delete(index)
+        del self.targets[index]
         self.status.SetLabel("Destinos añadidos: {}.".format(len(self.targets)))
 
     def align_targets(self, _event):
