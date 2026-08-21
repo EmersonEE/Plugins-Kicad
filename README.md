@@ -6,6 +6,9 @@ orientations from one selected block to one or more selected destination blocks.
 The current version moves footprints only. It does not modify tracks, zones, nets,
 or schematic files.
 
+Before moving anything, the plugin validates every destination and asks for
+confirmation. Invalid destinations are rejected without changing the board.
+
 ## Usage
 
 1. Select all footprints in the reference block.

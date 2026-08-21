@@ -145,6 +145,30 @@ def align_block(reference, target):
     return True, "Alineados {} footprints.".format(len(moved))
 
 
+def validate_block(reference, target):
+    """Validate a destination without changing the board."""
+    errors = []
+    if any(target_fp.GetReference() == ref_fp.GetReference() for target_fp in target for ref_fp in reference):
+        errors.append("incluye footprints del bloque de referencia")
+
+    ref_groups = ordered_components(reference, centroid(reference), reference)
+    target_groups = ordered_components(target, centroid(target), target)
+    if set(ref_groups) != set(target_groups):
+        errors.append("sus componentes o footprints no coinciden")
+    else:
+        for key, ref_parts in ref_groups.items():
+            if len(ref_parts) != len(target_groups[key]):
+                errors.append("la cantidad de componentes equivalentes no coincide")
+                break
+
+    locked = [fp.GetReference() for fp in target if fp.IsLocked()]
+    if locked:
+        errors.append("tiene footprints bloqueados: {}".format(", ".join(locked)))
+
+    matched = min(len(reference), len(target)) if not errors else 0
+    return errors, matched
+
+
 class BlockAlignerDialog(wx.Dialog):
     def __init__(self, parent, board):
         super().__init__(parent, title="Block Aligner", size=(510, 390))
@@ -213,6 +237,38 @@ class BlockAlignerDialog(wx.Dialog):
         if not self.reference or not self.targets:
             wx.MessageBox("Captura una referencia y añade al menos un destino.", "Block Aligner")
             return
+        errors = []
+        summary = []
+        aligned = 0
+        for index, target in enumerate(self.targets, 1):
+            validation_errors, matched = validate_block(self.reference, target)
+            if validation_errors:
+                errors.append(
+                    "Destino {}: {}".format(index, "; ".join(validation_errors))
+                )
+            else:
+                summary.append("Destino {}: {} footprints coincidentes".format(index, matched))
+
+        if errors:
+            wx.MessageBox(
+                "No se aplicaron cambios.\n\n{}".format("\n".join(errors)),
+                "Validación de Block Aligner",
+            )
+            return
+
+        confirmation = wx.MessageDialog(
+            self,
+            "Se moverán los siguientes bloques:\n\n{}\n\n¿Continuar?".format(
+                "\n".join(summary)
+            ),
+            "Validación de Block Aligner",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+        )
+        proceed = confirmation.ShowModal() == wx.ID_YES
+        confirmation.Destroy()
+        if not proceed:
+            return
+
         errors = []
         aligned = 0
         for index, target in enumerate(self.targets, 1):
