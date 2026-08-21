@@ -18,9 +18,6 @@ operation. Use the normal PCB Editor undo/redo commands (`Ctrl+Z`/`Ctrl+Y`).
 5. Repeat for each destination block.
 6. Click **Alinear destinos**.
 
-The footprints must be selected in the PCB editor before clicking each capture
-button. The dialog is non-modal so it can remain open while making selections.
-
 Components are matched by value, library footprint, pad count, and their
 connectivity to other components inside the block. Net names and net codes are
 ignored, so equivalent blocks can use different nets. If two components still

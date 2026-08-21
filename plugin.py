@@ -184,34 +184,28 @@ class BlockAlignerDialog(wx.Dialog):
         self.SetSizer(layout)
 
     def capture_reference(self, _event):
-        try:
-            selected = select_footprints(self.board)
-            if not selected:
-                wx.MessageBox("Selecciona el bloque de referencia primero.", "Block Aligner")
-                return
-            self.reference = selected
-            self.status.SetLabel(
-                "Referencia capturada: {} footprints.".format(len(selected))
-            )
-        except Exception as error:
-            wx.MessageBox("No se pudo capturar la referencia:\n{}".format(error), "Block Aligner")
+        selected = select_footprints(self.board)
+        if not selected:
+            wx.MessageBox("Selecciona el bloque de referencia primero.", "Block Aligner")
+            return
+        self.reference = selected
+        self.status.SetLabel(
+            "Referencia capturada: {} footprints.".format(len(selected))
+        )
 
     def add_target(self, _event):
-        try:
-            if not self.reference:
-                wx.MessageBox("Captura primero el bloque de referencia.", "Block Aligner")
-                return
-            selected = select_footprints(self.board)
-            if not selected:
-                wx.MessageBox("Selecciona un bloque destino.", "Block Aligner")
-                return
-            self.targets.append(selected)
-            self.target_list.Append(
-                "Destino {}: {} footprints".format(len(self.targets), len(selected))
-            )
-            self.status.SetLabel("Destinos añadidos: {}.".format(len(self.targets)))
-        except Exception as error:
-            wx.MessageBox("No se pudo añadir el destino:\n{}".format(error), "Block Aligner")
+        if not self.reference:
+            wx.MessageBox("Captura primero el bloque de referencia.", "Block Aligner")
+            return
+        selected = select_footprints(self.board)
+        if not selected:
+            wx.MessageBox("Selecciona un bloque destino.", "Block Aligner")
+            return
+        self.targets.append(selected)
+        self.target_list.Append(
+            "Destino {}: {} footprints".format(len(self.targets), len(selected))
+        )
+        self.status.SetLabel("Destinos añadidos: {}.".format(len(self.targets)))
 
     def align_targets(self, _event):
         if not self.reference or not self.targets:
