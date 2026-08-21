@@ -15,9 +15,10 @@ or schematic files.
 5. Repeat for each destination block.
 6. Click **Alinear destinos**.
 
-Components are matched by value, library footprint, pad count, and local order
-inside the block. Future work will add connectivity-based matching for repeated
-components with identical properties.
+Components are matched by value, library footprint, pad count, and their
+connectivity to other components inside the block. Net names and net codes are
+ignored, so equivalent blocks can use different nets. If two components still
+have exactly the same circuit role, their local position is used as a fallback.
 
 ## Installation
 

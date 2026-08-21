@@ -48,14 +48,54 @@ def select_footprints(board):
     return [fp for fp in board.GetFootprints() if fp.IsSelected()]
 
 
+def pad_net_id(pad):
+    """Get a net identifier without relying on the net name."""
+    try:
+        return int(pad.GetNetCode())
+    except AttributeError:
+        return str(pad.GetNetname())
+
+
+def connectivity_signature(footprint, block):
+    """Describe this footprint's connections to other footprints in its block.
+
+    Net names and net codes are intentionally omitted because repeated schematic
+    blocks normally use different nets. External connections are represented by
+    an empty peer list.
+    """
+    peers_by_pad = []
+    for pad in footprint.Pads():
+        net_id = pad_net_id(pad)
+        peers = []
+        if net_id not in (0, "", None):
+            for other in block:
+                if other is footprint:
+                    continue
+                for other_pad in other.Pads():
+                    if pad_net_id(other_pad) == net_id:
+                        peers.append(
+                            (
+                                footprint_key(other),
+                                str(other_pad.GetNumber()),
+                            )
+                        )
+        peers_by_pad.append(
+            (
+                str(pad.GetNumber()),
+                tuple(sorted(peers)) if peers else ("external",),
+            )
+        )
+    return tuple(sorted(peers_by_pad))
+
+
 def centroid(footprints):
     xs = [position(fp)[0] for fp in footprints]
     ys = [position(fp)[1] for fp in footprints]
     return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
-def ordered_components(footprints, center):
-    """Group equivalent parts and order duplicates by their local position."""
+def ordered_components(footprints, center, block):
+    """Group equivalent parts and order duplicates by circuit role."""
     groups = {}
     for footprint in footprints:
         groups.setdefault(footprint_key(footprint), []).append(footprint)
@@ -65,6 +105,7 @@ def ordered_components(footprints, center):
         result[key] = sorted(
             group,
             key=lambda fp: (
+                connectivity_signature(fp, block),
                 position(fp)[1] - center[1],
                 position(fp)[0] - center[0],
                 fp.GetReference(),
@@ -76,8 +117,8 @@ def ordered_components(footprints, center):
 def align_block(reference, target):
     ref_center = centroid(reference)
     target_center = centroid(target)
-    ref_groups = ordered_components(reference, ref_center)
-    target_groups = ordered_components(target, target_center)
+    ref_groups = ordered_components(reference, ref_center, reference)
+    target_groups = ordered_components(target, target_center, target)
 
     if set(ref_groups) != set(target_groups):
         return False, "Los componentes o footprints no coinciden."
