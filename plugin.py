@@ -1,5 +1,6 @@
 import math
 import os
+import re
 
 import pcbnew
 import wx
@@ -270,6 +271,14 @@ def pad_net_id(pad):
         return str(pad.GetNetname())
 
 
+def pad_net_name(pad):
+    """Get pad net name string safely."""
+    try:
+        return str(pad.GetNetname())
+    except Exception:
+        return ""
+
+
 def connectivity_signature(footprint, block):
     """Describe this footprint's connections to other footprints in its block.
 
@@ -511,8 +520,27 @@ def diagnose_block(reference, target):
     }
 
 
+def extract_ref_number(ref_str):
+    """Extract the integer numerical part from a reference designator."""
+    m = re.search(r"\d+", ref_str)
+    return int(m.group(0)) if m else 0
+
+
+def extract_named_references_from_nets(fp):
+    """Extract any component reference designators explicitly named in net strings."""
+    named = set()
+    for p in fp.Pads():
+        try:
+            net_name = str(p.GetNetname())
+        except Exception:
+            continue
+        for m in re.findall(r"Net-\(([A-Za-z0-9_]+)[-_]", net_name):
+            named.add(m)
+    return named
+
+
 def auto_discover_blocks(board, reference, existing_targets):
-    """Automatically find and return valid destination blocks across the PCB."""
+    """Automatically find and return valid destination blocks across the PCB without mixing."""
     if not reference:
         return []
 
@@ -537,11 +565,56 @@ def auto_discover_blocks(board, reference, existing_targets):
     discovered_blocks = []
     discovered_refs = set()
 
-    # Estrategia 1: Hojas jerárquicas
+    # Precomputar redes globales / de alimentación
+    pad_counts_by_net = {}
+    net_names_by_id = {}
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            nid = pad_net_id(pad)
+            if nid not in (0, "", None, -1):
+                pad_counts_by_net[nid] = pad_counts_by_net.get(nid, 0) + 1
+                if nid not in net_names_by_id:
+                    net_names_by_id[nid] = pad_net_name(pad)
+
+    def is_global_net(net_id):
+        if net_id in (0, "", None, -1):
+            return True
+        if pad_counts_by_net.get(net_id, 0) > max(len(reference) + 2, 4):
+            return True
+        name = net_names_by_id.get(net_id, "").upper().strip()
+        pwr_keys = [
+            "GND", "VCC", "VDD", "VSS", "+3V3", "+5V", "+12V", "-12V",
+            "3V3", "5V", "GNDA", "AGND", "DGND", "POWER", "PWR", "ADC1", "ADC2"
+        ]
+        return any(
+            k == name
+            or name.startswith("+")
+            or name.endswith("GND")
+            or name.startswith("GND")
+            for k in pwr_keys
+        )
+
+    # -------------------------------------------------------------------------
+    # Estrategia 1: Hojas jerárquicas (Sheet Path & Sheet Name)
+    # -------------------------------------------------------------------------
     sheet_groups = {}
     for fp in all_board_fps:
-        sheet_key = (fp.GetSheetfile(), fp.GetSheetname())
-        if sheet_key != ("", ""):
+        path_str = ""
+        try:
+            path_str = fp.GetPath().AsString()
+        except Exception:
+            pass
+
+        sheet_key = ""
+        if path_str and "/" in path_str and len(path_str.split("/")) > 2:
+            sheet_key = path_str.rsplit("/", 1)[0]
+        if not sheet_key:
+            sheet_file = fp.GetSheetfile()
+            sheet_name = fp.GetSheetname()
+            if sheet_file or sheet_name:
+                sheet_key = f"{sheet_file}::{sheet_name}"
+
+        if sheet_key:
             sheet_groups.setdefault(sheet_key, []).append(fp)
 
     for sheet_key, fps in sheet_groups.items():
@@ -552,14 +625,64 @@ def auto_discover_blocks(board, reference, existing_targets):
                 for fp in fps:
                     discovered_refs.add(fp.GetReference())
 
-    # Estrategia 2: Crecimiento por componente clave y conectividad interna
+    # -------------------------------------------------------------------------
+    # Estrategia 2: Sufijos de Designadores (ej. _A -> _B, _C)
+    # -------------------------------------------------------------------------
     remaining_fps = [
         fp for fp in all_board_fps if fp.GetReference() not in discovered_refs
     ]
-    least_common_key = min(ref_counts, key=lambda k: ref_counts[k])
-    seed_fps = [
-        fp for fp in remaining_fps if footprint_key(fp) == least_common_key
+    fps_by_ref = {fp.GetReference(): fp for fp in remaining_fps}
+    ref_names = [fp.GetReference() for fp in reference]
+
+    parsed = []
+    for r in ref_names:
+        m = re.match(r"^([A-Za-z]+)(\d+)(.*)$", r)
+        if m:
+            parsed.append((m.group(1), int(m.group(2)), m.group(3)))
+
+    if len(parsed) == len(ref_names):
+        suffixes_in_ref = {s for p, n, s in parsed if s}
+        if len(suffixes_in_ref) == 1:
+            ref_sfx = list(suffixes_in_ref)[0]
+            all_board_suffixes = set()
+            for r in fps_by_ref:
+                m = re.match(r"^([A-Za-z]+)(\d+)(.*)$", r)
+                if m and m.group(3) and m.group(3) != ref_sfx:
+                    all_board_suffixes.add(m.group(3))
+
+            for sfx in sorted(all_board_suffixes):
+                cand_refs = [f"{p}{n}{sfx}" for p, n, s in parsed]
+                if all(
+                    r in fps_by_ref and r not in discovered_refs
+                    for r in cand_refs
+                ):
+                    cand_block = [fps_by_ref[r] for r in cand_refs]
+                    errors, matched = validate_block(reference, cand_block)
+                    if not errors and matched == len(reference):
+                        discovered_blocks.append(cand_block)
+                        for r in cand_refs:
+                            discovered_refs.add(r)
+
+    # -------------------------------------------------------------------------
+    # Estrategia 3: Crecimiento por Grafo Interno, Nombres de Red y Proximidad
+    # -------------------------------------------------------------------------
+    remaining_fps = [
+        fp for fp in all_board_fps if fp.GetReference() not in discovered_refs
     ]
+
+    # Seleccionar como componente semilla el que tenga mayor conectividad interna (ej. IC / Optoacoplador)
+    def seed_score(fp):
+        named_cnt = len(extract_named_references_from_nets(fp))
+        pads_cnt = len([p for p in fp.Pads() if pad_net_id(p) not in (0, "", None, -1)])
+        return (named_cnt, pads_cnt)
+
+    best_ref_seed = max(reference, key=seed_score)
+    seed_key = footprint_key(best_ref_seed)
+    seed_fps = [
+        fp for fp in remaining_fps if footprint_key(fp) == seed_key
+    ]
+
+    seed_fps.sort(key=lambda fp: extract_ref_number(fp.GetReference()))
 
     for seed in seed_fps:
         if seed.GetReference() in discovered_refs:
@@ -569,31 +692,85 @@ def auto_discover_blocks(board, reference, existing_targets):
         cluster_refs = {seed.GetReference()}
         queue = [seed]
 
+        # 3A. BFS por señales internas y por nombres de componentes en redes
         while queue and len(cluster) < len(reference):
             curr = queue.pop(0)
-            curr_nets = set()
+            curr_internal_nets = set()
             for pad in curr.Pads():
-                net_id = pad_net_id(pad)
-                if net_id not in (0, "", None):
-                    curr_nets.add(net_id)
+                nid = pad_net_id(pad)
+                if not is_global_net(nid):
+                    curr_internal_nets.add(nid)
+
+            named_in_curr = extract_named_references_from_nets(curr)
 
             for neighbor in remaining_fps:
                 n_ref = neighbor.GetReference()
                 if n_ref not in cluster_refs and n_ref not in discovered_refs:
-                    shares_net = any(
-                        pad_net_id(p) in curr_nets
+                    shares = any(
+                        pad_net_id(p) in curr_internal_nets
                         for p in neighbor.Pads()
-                        if pad_net_id(p) not in (0, "", None)
+                        if not is_global_net(pad_net_id(p))
                     )
-                    if shares_net:
+                    is_named = (n_ref in named_in_curr) or (
+                        curr.GetReference()
+                        in extract_named_references_from_nets(neighbor)
+                    )
+
+                    if shares or is_named:
                         n_key = footprint_key(neighbor)
-                        curr_key_count = sum(
+                        curr_k_count = sum(
                             1 for fp in cluster if footprint_key(fp) == n_key
                         )
-                        if curr_key_count < ref_counts.get(n_key, 0):
+                        if curr_k_count < ref_counts.get(n_key, 0):
                             cluster.append(neighbor)
                             cluster_refs.add(n_ref)
                             queue.append(neighbor)
+
+        # 3B. Completar componentes asociados (redes cruzadas + proximidad ponderada)
+        needed_keys = ref_counts.copy()
+        for fp in cluster:
+            needed_keys[footprint_key(fp)] -= 1
+            if needed_keys[footprint_key(fp)] == 0:
+                del needed_keys[footprint_key(fp)]
+
+        if needed_keys:
+            cx = sum(position(fp)[0] for fp in cluster) // len(cluster)
+            cy = sum(position(fp)[1] for fp in cluster) // len(cluster)
+            avg_num = (
+                sum(extract_ref_number(f.GetReference()) for f in cluster)
+                / len(cluster)
+            )
+
+            for k, count in list(needed_keys.items()):
+                available = [
+                    fp
+                    for fp in remaining_fps
+                    if fp.GetReference() not in cluster_refs
+                    and fp.GetReference() not in discovered_refs
+                    and footprint_key(fp) == k
+                ]
+
+                def score_part(fp):
+                    dist_sq = (position(fp)[0] - cx) ** 2 + (
+                        position(fp)[1] - cy
+                    ) ** 2
+                    num_diff = abs(
+                        extract_ref_number(fp.GetReference()) - avg_num
+                    )
+                    named_in_fp = extract_named_references_from_nets(fp)
+                    is_named = (
+                        -1e12
+                        if any(
+                            c.GetReference() in named_in_fp for c in cluster
+                        )
+                        else 0
+                    )
+                    return (is_named, dist_sq, num_diff)
+
+                available.sort(key=score_part)
+                for best_fp in available[:count]:
+                    cluster.append(best_fp)
+                    cluster_refs.add(best_fp.GetReference())
 
         if len(cluster) == len(reference):
             errors, matched = validate_block(reference, cluster)
@@ -602,6 +779,9 @@ def auto_discover_blocks(board, reference, existing_targets):
                 for fp in cluster:
                     discovered_refs.add(fp.GetReference())
 
+    discovered_blocks.sort(
+        key=lambda blk: min(extract_ref_number(fp.GetReference()) for fp in blk)
+    )
     return discovered_blocks
 
 
@@ -700,11 +880,180 @@ class ErrorDetailsDialog(wx.Dialog):
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         btn_close = wx.Button(self, wx.ID_CANCEL, label="Cerrar")
-        btn_close.Bind(wx.EVT_BUTTON, lambda _evt: self.Close())
+        btn_close.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CANCEL))
         btn_sizer.Add(btn_close, 0, wx.ALL, 6)
         main_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 6)
 
         self.SetSizer(main_sizer)
+
+
+def generate_diagnostic_report(board, reference, existing_targets, discovered_blocks):
+    """Generate a detailed diagnostic log of reference, board nets, and detected blocks."""
+    lines = []
+    lines.append("=== BLOCK ALIGNER DIAGNOSTIC LOG ===")
+    lines.append(f"Total footprints on board: {len(list(board.GetFootprints()))}")
+    lines.append("")
+
+    # 1. Reference Block
+    lines.append(f"--- REFERENCE BLOCK ({len(reference)} footprints) ---")
+    for fp in sorted(reference, key=lambda f: f.GetReference()):
+        ref = fp.GetReference()
+        val = fp.GetValue()
+        fp_name = footprint_name(fp)
+        sheet = (
+            f"{fp.GetSheetfile()}::{fp.GetSheetname()}"
+            if (fp.GetSheetfile() or fp.GetSheetname())
+            else ""
+        )
+        try:
+            path_str = fp.GetPath().AsString()
+        except Exception:
+            path_str = ""
+        pads_info = []
+        for pad in fp.Pads():
+            p_num = str(pad.GetNumber())
+            net_name = str(pad.GetNetname())
+            net_code = pad.GetNetCode()
+            pads_info.append(f"Pin {p_num}: Net '{net_name}' (ID {net_code})")
+        lines.append(
+            f"  [{ref}] Val: '{val}' | FP: '{fp_name}' | Sheet: '{sheet}' | Path: '{path_str}'"
+        )
+        lines.append(f"       Pads: {', '.join(pads_info)}")
+    lines.append("")
+
+    # 2. Existing Targets
+    if existing_targets:
+        lines.append(
+            f"--- EXISTING TARGETS ({len(existing_targets)} targets) ---"
+        )
+        for idx, entry in enumerate(existing_targets, 1):
+            fps = entry["footprints"]
+            ref_names = [f.GetReference() for f in fps]
+            lines.append(
+                f"  Target {idx} ({len(fps)} fps, rot {entry.get('rotation', 0)}°): {', '.join(ref_names)}"
+            )
+        lines.append("")
+
+    # 3. Discovered Blocks
+    lines.append(
+        f"--- DISCOVERED BLOCKS ({len(discovered_blocks)} blocks) ---"
+    )
+    for idx, block in enumerate(discovered_blocks, 1):
+        lines.append(f"  Discovered Block {idx} ({len(block)} footprints):")
+        for fp in sorted(block, key=lambda f: f.GetReference()):
+            ref = fp.GetReference()
+            val = fp.GetValue()
+            fp_name = footprint_name(fp)
+            pads_info = []
+            for pad in fp.Pads():
+                p_num = str(pad.GetNumber())
+                net_name = str(pad.GetNetname())
+                net_code = pad.GetNetCode()
+                pads_info.append(
+                    f"Pin {p_num}: Net '{net_name}' (ID {net_code})"
+                )
+            lines.append(f"    [{ref}] Val: '{val}' | FP: '{fp_name}'")
+            lines.append(f"         Pads: {', '.join(pads_info)}")
+    lines.append("")
+
+    # 4. Remaining Footprints on Board with matching component types
+    ref_keys = set(footprint_key(fp) for fp in reference)
+    used_refs = set(fp.GetReference() for fp in reference)
+    for entry in existing_targets:
+        for fp in entry["footprints"]:
+            used_refs.add(fp.GetReference())
+    for block in discovered_blocks:
+        for fp in block:
+            used_refs.add(fp.GetReference())
+
+    remaining_matching = [
+        fp
+        for fp in board.GetFootprints()
+        if fp.GetReference() not in used_refs
+        and footprint_key(fp) in ref_keys
+    ]
+    if remaining_matching:
+        lines.append(
+            f"--- OTHER MATCHING FOOTPRINTS ON BOARD ({len(remaining_matching)} footprints) ---"
+        )
+        for fp in sorted(remaining_matching, key=lambda f: f.GetReference()):
+            ref = fp.GetReference()
+            val = fp.GetValue()
+            pads_info = [
+                f"Pin {pad.GetNumber()}: Net '{pad.GetNetname()}'"
+                for pad in fp.Pads()
+            ]
+            lines.append(
+                f"  [{ref}] Val: '{val}' | Pads: {', '.join(pads_info)}"
+            )
+    lines.append("")
+    lines.append("=== END OF DIAGNOSTIC LOG ===")
+
+    return "\n".join(lines)
+
+
+class DiagnosticLogDialog(wx.Dialog):
+    """Modal dialog displaying full diagnostic breakdown and copy button."""
+
+    def __init__(self, parent, report_text):
+        super().__init__(
+            parent,
+            title="Diagnóstico de Auto-Detección y Componentes",
+            size=(760, 540),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+        )
+        self.report_text = report_text
+        self._init_ui()
+
+    def _init_ui(self):
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        info_lbl = wx.StaticText(
+            self,
+            label="Informe de componentes de referencia, conexiones de redes y bloques encontrados.\n"
+            "Puedes copiar este informe o se guardará automáticamente en 'debug_log.txt'.",
+        )
+        main_sizer.Add(info_lbl, 0, wx.ALL, 10)
+
+        self.text_ctrl = wx.TextCtrl(
+            self,
+            value=self.report_text,
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_SUNKEN,
+        )
+        self.text_ctrl.SetFont(
+            wx.Font(
+                9,
+                wx.FONTFAMILY_TELETYPE,
+                wx.FONTSTYLE_NORMAL,
+                wx.FONTWEIGHT_NORMAL,
+            )
+        )
+        main_sizer.Add(
+            self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10
+        )
+
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_copy = wx.Button(self, label="📋 Copiar al Portapapeles")
+        btn_copy.Bind(wx.EVT_BUTTON, self._on_copy)
+        btn_close = wx.Button(self, wx.ID_CANCEL, label="Cerrar")
+        btn_close.Bind(wx.EVT_BUTTON, lambda _evt: self.EndModal(wx.ID_CANCEL))
+
+        btn_sizer.Add(btn_copy, 0, wx.RIGHT, 8)
+        btn_sizer.Add(btn_close, 0)
+        main_sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 10)
+
+        self.SetSizer(main_sizer)
+
+    def _on_copy(self, _event):
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(self.report_text))
+            wx.TheClipboard.Close()
+            wx.MessageBox(
+                "¡Informe copiado al portapapeles con éxito!",
+                "Diagnóstico",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
 
 
 def format_references(footprints, max_display=8):
@@ -819,6 +1168,7 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_remove_target = wx.Button(self, label="Eliminar")
         self.btn_view_target = wx.Button(self, label="Ver en PCB")
         self.btn_inspect_error = wx.Button(self, label="Detalles error")
+        self.btn_export_log = wx.Button(self, label="📋 Diagnóstico")
         self.btn_clear = wx.Button(self, label="Limpiar todo")
 
         self.btn_add_target.Bind(wx.EVT_BUTTON, self.add_target)
@@ -826,6 +1176,7 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_remove_target.Bind(wx.EVT_BUTTON, self.remove_target)
         self.btn_view_target.Bind(wx.EVT_BUTTON, self.view_target_in_pcb)
         self.btn_inspect_error.Bind(wx.EVT_BUTTON, self.show_error_details)
+        self.btn_export_log.Bind(wx.EVT_BUTTON, self.export_diagnostic_log)
         self.btn_clear.Bind(wx.EVT_BUTTON, self.clear)
 
         target_btn_row.Add(self.btn_add_target, 0, wx.RIGHT, 4)
@@ -833,6 +1184,7 @@ class BlockAlignerDialog(wx.Dialog):
         target_btn_row.Add(self.btn_remove_target, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_view_target, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_inspect_error, 0, wx.RIGHT, 4)
+        target_btn_row.Add(self.btn_export_log, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_clear, 0, wx.RIGHT, 12)
 
         # Selector de Rotación y botones de giro rápido
@@ -915,6 +1267,7 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_remove_target.Enable(has_target_selected)
         self.btn_view_target.Enable(has_target_selected)
         self.btn_inspect_error.Enable(has_target_selected and has_reference)
+        self.btn_export_log.Enable(has_reference)
         self.btn_rot_ccw.Enable(has_target_selected)
         self.btn_rot_cw.Enable(has_target_selected)
         self.rotation_choice.Enable(has_target_selected)
@@ -1100,6 +1453,36 @@ class BlockAlignerDialog(wx.Dialog):
         dlg.ShowModal()
         dlg.Destroy()
 
+    def export_diagnostic_log(self, _event):
+        if not self.reference:
+            wx.MessageBox(
+                "Captura primero un bloque de referencia para generar el diagnóstico.",
+                "Diagnóstico",
+                wx.OK | wx.ICON_WARNING,
+                self,
+            )
+            return
+        discovered = auto_discover_blocks(
+            self.board, self.reference, self.targets
+        )
+        report = generate_diagnostic_report(
+            self.board, self.reference, self.targets, discovered
+        )
+        try:
+            log_path = os.path.expanduser("~/Block_Aligner/debug_log.txt")
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(report)
+        except Exception:
+            pass
+
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(report))
+            wx.TheClipboard.Close()
+
+        dlg = DiagnosticLogDialog(self, report)
+        dlg.ShowModal()
+        dlg.Destroy()
+
     def auto_discover(self, _event):
         if not self.reference:
             wx.MessageBox(
@@ -1108,12 +1491,32 @@ class BlockAlignerDialog(wx.Dialog):
                 wx.OK | wx.ICON_WARNING,
             )
             return
+
+        # Limpiar destinos previos para descubrir desde cero sin mezclas residuales
+        self.targets = []
+
         discovered = auto_discover_blocks(
-            self.board, self.reference, self.targets
+            self.board, self.reference, []
         )
+        report = generate_diagnostic_report(
+            self.board, self.reference, self.targets, discovered
+        )
+        try:
+            log_path = os.path.expanduser("~/Block_Aligner/debug_log.txt")
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(report)
+        except Exception:
+            pass
+
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(wx.TextDataObject(report))
+            wx.TheClipboard.Close()
+
         if not discovered:
+            self._update_targets_table()
             wx.MessageBox(
-                "No se encontraron bloques adicionales coincidentes con la referencia en la PCB.",
+                "No se encontraron bloques adicionales coincidentes con la referencia en la PCB.\n\n"
+                "Se ha guardado un informe en 'debug_log.txt' y puedes verlo con el botón '📋 Diagnóstico'.",
                 "Auto-Detección de Bloques",
                 wx.OK | wx.ICON_INFORMATION,
             )
@@ -1122,9 +1525,8 @@ class BlockAlignerDialog(wx.Dialog):
             self.targets.append({"footprints": block, "rotation": 0})
         self._update_targets_table()
         wx.MessageBox(
-            "Se auto-detectaron y añadieron {} bloque(s) destino válido(s).".format(
-                len(discovered)
-            ),
+            f"Se auto-detectaron y añadieron {len(discovered)} bloque(s) destino válido(s).\n\n"
+            f"📄 El log de diagnóstico se ha guardado en 'debug_log.txt' y copiado a tu portapapeles.",
             "Auto-Detección de Bloques",
             wx.OK | wx.ICON_INFORMATION,
         )
