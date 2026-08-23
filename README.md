@@ -5,8 +5,8 @@ orientations from one selected reference block to one or more destination blocks
 
 ## Features
 
-- **Component Matching**: Matches components by value, library footprint, pad count, and internal block connectivity. Net names and net codes are ignored, so equivalent blocks can use different nets.
-- **Auto-Discovery**: One-click **Auto-detectar** scans the entire board to automatically identify all matching multi-channel blocks (via hierarchical sheets or connectivity graphs).
+- **Component Matching**: Matches components by value, library footprint, pad count, and internal block connectivity. Net names and net codes are ignored, so equivalent blocks can use different nets. Equivalent components are paired as part of the complete block geometry, preserving relationships such as `R1-D1`, `R2-D2`, etc.
+- **Auto-Discovery**: One-click **Auto-detectar** scans the entire board to automatically identify all matching multi-channel blocks (via hierarchical sheets or connectivity graphs). Candidates are constrained to the physical area implied by the reference block and are not completed with unrelated distant footprints.
 - **Error Inspector**: Detailed breakdown of validation mismatches (**Detalles error**), listing missing, extra, locked, or mismatched components.
 - **Anchor Point Selection**: Choose between aligning using the **geometric centroid** (default) or a **specific key footprint** (e.g. `U1` $\rightarrow$ `U2`) as the fixed placement origin.
 - **Rigid Block Rotation**: Supports **0° (default)**, **90°**, **180°**, and **270°** rotation per destination block, rotating both the relative block geometry and individual footprint orientations in lockstep.
@@ -14,6 +14,10 @@ orientations from one selected reference block to one or more destination blocks
 - **Native Grouping (PCB_GROUP)**: Option to automatically bundle aligned footprints, tracks, and vias into native KiCad groups upon applying.
 - **Interactive "Ver en PCB"**: Highlight and select reference or destination footprints directly in KiCad PCB Editor with a button or by double-clicking a table row.
 - **Safe Transactional Preview**: The **Vista previa** button temporarily renders the footprints and replicated tracks/vias in their calculated positions on the PCB and lets you confirm or cancel (reverting cleanly to original positions and removing preview tracks).
+
+The auto-detection intentionally uses deterministic PCB connectivity and geometry instead of a local AI model. This makes each decision reproducible and avoids introducing a probabilistic component into layout changes.
+
+The matching logic has been tested with repeated blocks containing both 2 and 8 footprints, including multiple equivalent component types and blocks with different physical spacing.
 
 ## Usage
 

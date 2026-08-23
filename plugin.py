@@ -1,3 +1,4 @@
+import itertools
 import math
 import os
 import re
@@ -97,23 +98,20 @@ def collect_reference_tracks(board, reference):
     seen_ids = set()
 
     for item in board.GetTracks():
-        # Si el usuario seleccionó la pista/vía explícitamente en el PCB Editor
-        try:
-            if item.IsSelected():
-                collected.append(item)
-                seen_ids.add(id(item))
-                continue
-        except Exception:
-            pass
-
-        # Verificar si pertenece a las redes de referencia o está dentro del área del bloque
+        # La selección de una pista no debe saltarse el límite espacial: KiCad
+        # puede conservar seleccionados objetos ajenos al bloque.
         start = item.GetStart()
         end = item.GetEnd()
         in_area = is_inside(start.x, start.y) and is_inside(end.x, end.y)
         net_code = item.GetNetCode()
 
         if in_area:
-            if not ref_net_codes or net_code in ref_net_codes or net_code in (0, -1):
+            explicitly_selected = False
+            try:
+                explicitly_selected = item.IsSelected()
+            except Exception:
+                pass
+            if explicitly_selected or not ref_net_codes or net_code in ref_net_codes or net_code in (0, -1):
                 if id(item) not in seen_ids:
                     collected.append(item)
                     seen_ids.add(id(item))
@@ -153,6 +151,11 @@ def clone_and_transform_track(
         return pcbnew.VECTOR2I(int(dx + rot_x), int(dy + rot_y))
 
     target_net = net_map.get(item.GetNetCode(), None)
+    # No crear cobre conectado a la red 0 cuando el destino no tiene una
+    # correspondencia válida. Es preferible omitirlo a introducir una pista
+    # eléctricamente incorrecta en la PCB.
+    if item.GetNetCode() not in (0, -1, None, "") and target_net is None:
+        return None
 
     if item_class == "PCB_VIA":
         via = pcbnew.PCB_VIA(board)
@@ -337,6 +340,55 @@ def ordered_components(footprints, center, block):
     return result
 
 
+def match_group_by_geometry(
+    ref_parts, target_parts, ref_origin, target_origin, rotation
+):
+    """Match equivalent parts as a group, preserving their block geometry."""
+    if len(ref_parts) != len(target_parts):
+        return []
+
+    def expected_position(ref_fp):
+        rx, ry = position(ref_fp)
+        rel_x, rel_y = rotate_point(
+            rx - ref_origin[0], ry - ref_origin[1], rotation
+        )
+        return target_origin[0] + rel_x, target_origin[1] + rel_y
+
+    expected = [expected_position(fp) for fp in ref_parts]
+    actual = [position(fp) for fp in target_parts]
+
+    def cost(ref_index, target_index):
+        ex, ey = expected[ref_index]
+        ax, ay = actual[target_index]
+        return (ex - ax) ** 2 + (ey - ay) ** 2
+
+    # Most groups are small. Exhaustive assignment avoids the independent
+    # sorting bug (R1-D2 / R2-D1) while still handling unusually large groups.
+    if len(ref_parts) <= 8:
+        best_order = None
+        best_cost = None
+        for order in itertools.permutations(range(len(target_parts))):
+            current_cost = sum(
+                cost(ref_index, target_index)
+                for ref_index, target_index in enumerate(order)
+            )
+            if best_cost is None or current_cost < best_cost:
+                best_cost = current_cost
+                best_order = order
+        return [
+            (ref_fp, target_parts[target_index])
+            for ref_fp, target_index in zip(ref_parts, best_order)
+        ]
+
+    remaining = set(range(len(target_parts)))
+    pairs = []
+    for ref_index, ref_fp in enumerate(ref_parts):
+        target_index = min(remaining, key=lambda idx: cost(ref_index, idx))
+        remaining.remove(target_index)
+        pairs.append((ref_fp, target_parts[target_index]))
+    return pairs
+
+
 def plan_block(
     reference,
     target,
@@ -358,33 +410,58 @@ def plan_block(
         if len(ref_parts) != len(target_parts):
             return False, "La cantidad de componentes equivalentes no coincide."
 
-    # Build mapping from ref_fp -> target_fp
+    # Start with centroids. For an explicit anchor, the first matching pass
+    # identifies its target counterpart before rematching with that anchor.
+    ref_origin = ref_center
+    target_origin = target_center
+
+    # Match equivalent components using the whole block geometry, not by
+    # independently sorting each footprint type.
     pairs = []
     ref_to_target = {}
     for key, ref_parts in ref_groups.items():
-        for ref_fp, target_fp in zip(ref_parts, target_groups[key]):
+        group_pairs = match_group_by_geometry(
+            ref_parts,
+            target_groups[key],
+            ref_origin,
+            target_origin,
+            rotation,
+        )
+        for ref_fp, target_fp in group_pairs:
             pairs.append((ref_fp, target_fp))
             ref_to_target[ref_fp.GetReference()] = target_fp
 
-    # Determine reference origin and target origin
-    if not anchor_ref_name or anchor_ref_name in (
+    # An explicit anchor needs the target selected by the same geometric
+    # matching used for the rest of the block.
+    if anchor_ref_name and anchor_ref_name not in (
         "<Centroide>",
         "Centroide del bloque",
     ):
-        ref_origin = ref_center
-        target_origin = target_center
-    else:
         ref_anchor_fp = next(
             (fp for fp in reference if fp.GetReference() == anchor_ref_name),
             None,
         )
-        if ref_anchor_fp and anchor_ref_name in ref_to_target:
-            target_anchor_fp = ref_to_target[anchor_ref_name]
+        target_anchor_fp = ref_to_target.get(anchor_ref_name)
+        if ref_anchor_fp and target_anchor_fp:
             ref_origin = position(ref_anchor_fp)
             target_origin = position(target_anchor_fp)
-        else:
-            ref_origin = ref_center
-            target_origin = target_center
+            rematched_pairs = []
+            ref_to_target = {}
+            for key, ref_parts in ref_groups.items():
+                rematched_pairs.extend(
+                    match_group_by_geometry(
+                        ref_parts,
+                        target_groups[key],
+                        ref_origin,
+                        target_origin,
+                        rotation,
+                    )
+                )
+            pairs = rematched_pairs
+            ref_to_target = {
+                ref_fp.GetReference(): target_fp
+                for ref_fp, target_fp in pairs
+            }
 
     fp_plan = []
     for ref_fp, target_fp in pairs:
@@ -457,6 +534,26 @@ def validate_block(reference, target):
 
     matched = min(len(reference), len(target)) if not errors else 0
     return errors, matched
+
+
+def block_diameter(footprints):
+    """Return the maximum distance between footprint origins in nanometres."""
+    if len(footprints) < 2:
+        return 0
+    points = [position(fp) for fp in footprints]
+    return max(
+        math.hypot(x1 - x2, y1 - y2)
+        for x1, y1 in points
+        for x2, y2 in points
+    )
+
+
+def within_block_area(fp, seed, max_diameter):
+    """Reject components that cannot belong to the same physical block."""
+    sx, sy = position(seed)
+    x, y = position(fp)
+    # Margin for footprint body/pad extents and small placement differences.
+    return math.hypot(x - sx, y - sy) <= max_diameter + 3000000
 
 
 def diagnose_block(reference, target):
@@ -561,6 +658,7 @@ def auto_discover_blocks(board, reference, existing_targets):
     for fp in reference:
         k = footprint_key(fp)
         ref_counts[k] = ref_counts.get(k, 0) + 1
+    ref_diameter = block_diameter(reference)
 
     discovered_blocks = []
     discovered_refs = set()
@@ -678,6 +776,13 @@ def auto_discover_blocks(board, reference, existing_targets):
 
     best_ref_seed = max(reference, key=seed_score)
     seed_key = footprint_key(best_ref_seed)
+    seed_x, seed_y = position(best_ref_seed)
+    expected_distances = {}
+    for ref_fp in reference:
+        x, y = position(ref_fp)
+        expected_distances.setdefault(footprint_key(ref_fp), []).append(
+            math.hypot(x - seed_x, y - seed_y)
+        )
     seed_fps = [
         fp for fp in remaining_fps if footprint_key(fp) == seed_key
     ]
@@ -716,6 +821,15 @@ def auto_discover_blocks(board, reference, existing_targets):
                         in extract_named_references_from_nets(neighbor)
                     )
 
+                    # Una conexión interna inequívoca es más fiable que la
+                    # distancia: el bloque destino puede estar más separado o
+                    # haber sido colocado de forma distinta al de referencia.
+                    # La distancia sigue limitando componentes añadidos solo
+                    # por heurística de proximidad.
+                    if not (shares or is_named) and not within_block_area(
+                        neighbor, seed, ref_diameter
+                    ):
+                        continue
                     if shares or is_named:
                         n_key = footprint_key(neighbor)
                         curr_k_count = sum(
@@ -748,12 +862,19 @@ def auto_discover_blocks(board, reference, existing_targets):
                     if fp.GetReference() not in cluster_refs
                     and fp.GetReference() not in discovered_refs
                     and footprint_key(fp) == k
+                    and within_block_area(fp, seed, ref_diameter)
                 ]
 
                 def score_part(fp):
-                    dist_sq = (position(fp)[0] - cx) ** 2 + (
-                        position(fp)[1] - cy
-                    ) ** 2
+                    fp_x, fp_y = position(fp)
+                    dist_sq = (fp_x - cx) ** 2 + (fp_y - cy) ** 2
+                    actual_distance = math.hypot(
+                        fp_x - position(seed)[0], fp_y - position(seed)[1]
+                    )
+                    geometry_error = min(
+                        abs(actual_distance - expected)
+                        for expected in expected_distances.get(k, [0])
+                    )
                     num_diff = abs(
                         extract_ref_number(fp.GetReference()) - avg_num
                     )
@@ -765,7 +886,7 @@ def auto_discover_blocks(board, reference, existing_targets):
                         )
                         else 0
                     )
-                    return (is_named, dist_sq, num_diff)
+                    return (is_named, geometry_error, dist_sq, num_diff)
 
                 available.sort(key=score_part)
                 for best_fp in available[:count]:
@@ -1469,11 +1590,15 @@ class BlockAlignerDialog(wx.Dialog):
             self.board, self.reference, self.targets, discovered
         )
         try:
-            log_path = os.path.expanduser("~/Block_Aligner/debug_log.txt")
+            log_dir = os.path.expanduser("~/Block_Aligner")
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, "debug_log.txt")
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write(report)
-        except Exception:
-            pass
+        except OSError as exc:
+            self.summary_status.SetLabel(
+                "No se pudo guardar el diagnóstico: {}".format(exc)
+            )
 
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(wx.TextDataObject(report))
@@ -1502,11 +1627,15 @@ class BlockAlignerDialog(wx.Dialog):
             self.board, self.reference, self.targets, discovered
         )
         try:
-            log_path = os.path.expanduser("~/Block_Aligner/debug_log.txt")
+            log_dir = os.path.expanduser("~/Block_Aligner")
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, "debug_log.txt")
             with open(log_path, "w", encoding="utf-8") as f:
                 f.write(report)
-        except Exception:
-            pass
+        except OSError as exc:
+            self.summary_status.SetLabel(
+                "No se pudo guardar el diagnóstico: {}".format(exc)
+            )
 
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(wx.TextDataObject(report))
@@ -1545,6 +1674,30 @@ class BlockAlignerDialog(wx.Dialog):
                 "Selecciona un bloque de footprints destino en PCB Editor.",
                 "Block Aligner",
                 wx.OK | wx.ICON_WARNING,
+            )
+            return
+        selected_refs = {fp.GetReference() for fp in selected}
+        reference_refs = {fp.GetReference() for fp in self.reference}
+        if selected_refs & reference_refs:
+            wx.MessageBox(
+                "El destino contiene footprints del bloque de referencia.",
+                "Block Aligner",
+                wx.OK | wx.ICON_ERROR,
+            )
+            return
+        registered_refs = {
+            fp.GetReference()
+            for entry in self.targets
+            for fp in entry["footprints"]
+        }
+        overlap = selected_refs & registered_refs
+        if overlap:
+            wx.MessageBox(
+                "El destino se solapa con otro destino ya registrado: {}.".format(
+                    ", ".join(sorted(overlap))
+                ),
+                "Block Aligner",
+                wx.OK | wx.ICON_ERROR,
             )
             return
         self.targets.append({"footprints": selected, "rotation": 0})
