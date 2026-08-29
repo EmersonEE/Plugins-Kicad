@@ -6,6 +6,16 @@ import re
 import pcbnew
 import wx
 
+# Patch SwigPyIterator for Python 3.12+ / 3.14+ compatibility
+try:
+    for attr in dir(pcbnew):
+        obj = getattr(pcbnew, attr, None)
+        if isinstance(obj, type) and "SwigPyIterator" in attr:
+            if hasattr(obj, "__next__") and not hasattr(obj, "next"):
+                obj.next = lambda self: self.__next__()
+except Exception:
+    pass
+
 
 def footprint_name(footprint):
     """Return a stable library footprint name across KiCad API variants."""
@@ -97,7 +107,16 @@ def collect_reference_tracks(board, reference):
     collected = []
     seen_ids = set()
 
-    for item in board.GetTracks():
+    track_list = []
+    try:
+        track_list = list(board.GetTracks())
+    except Exception:
+        try:
+            track_list = list(board.Tracks())
+        except Exception:
+            track_list = []
+
+    for item in track_list:
         # La selección de una pista no debe saltarse el límite espacial: KiCad
         # puede conservar seleccionados objetos ajenos al bloque.
         start = item.GetStart()
@@ -241,7 +260,21 @@ def set_orientation(footprint, source):
 
 
 def select_footprints(board):
-    return [fp for fp in board.GetFootprints() if fp.IsSelected()]
+    if not board:
+        try:
+            board = pcbnew.GetBoard()
+        except Exception:
+            return []
+    selected = []
+    for fp in board.GetFootprints():
+        try:
+            if fp.IsSelected():
+                selected.append(fp)
+            elif hasattr(fp, "HasSelectedAncestorGroup") and fp.HasSelectedAncestorGroup():
+                selected.append(fp)
+        except Exception:
+            pass
+    return selected
 
 
 def select_in_board(board, footprints):
@@ -1507,6 +1540,10 @@ class BlockAlignerDialog(wx.Dialog):
         self._update_ui_state()
 
     def capture_reference(self, _event):
+        try:
+            self.board = pcbnew.GetBoard()
+        except Exception:
+            pass
         selected = select_footprints(self.board)
         if not selected:
             wx.MessageBox(
@@ -1617,6 +1654,11 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
 
+        try:
+            self.board = pcbnew.GetBoard()
+        except Exception:
+            pass
+
         # Limpiar destinos previos para descubrir desde cero sin mezclas residuales
         self.targets = []
 
@@ -1668,6 +1710,10 @@ class BlockAlignerDialog(wx.Dialog):
                 wx.OK | wx.ICON_WARNING,
             )
             return
+        try:
+            self.board = pcbnew.GetBoard()
+        except Exception:
+            pass
         selected = select_footprints(self.board)
         if not selected:
             wx.MessageBox(
