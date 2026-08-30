@@ -8,6 +8,8 @@ orientations from one selected reference block to one or more destination blocks
 - **Component Matching**: Matches components by value, library footprint, pad count, and internal block connectivity. Net names and net codes are ignored, so equivalent blocks can use different nets. Equivalent components are paired as part of the complete block geometry, preserving relationships such as `R1-D1`, `R2-D2`, etc. Large groups (more than 8 equivalent parts) use the Hungarian algorithm for an optimal assignment instead of a greedy nearest-neighbour.
 - **Auto-Discovery**: One-click **Auto-detectar** scans the entire board to automatically identify all matching multi-channel blocks (via hierarchical sheets, reference-designator suffixes, or connectivity graphs). Candidates are constrained to the physical area implied by the reference block and are not completed with unrelated distant footprints. Power nets are detected via net class and a configurable name list.
 - **Schematic Sync Guard**: Before auto-discovery, `kicad-cli` compares saved schematic pin nets with matching PCB footprints. If the PCB is stale, detection stops and asks the user to save the schematic and update the PCB with **F8**, preventing channels from being mixed by incomplete connectivity.
+- **Schematic-first discovery**: Once synchronization is confirmed, repeated blocks are formed using the saved schematic connectivity as the primary graph instead of relying only on current PCB proximity.
+- **Mapping inspector**: Every destination records its detection method and confidence, and **Correspondencias** shows each reference-to-destination pair. Ambiguous mappings block application.
 - **Error Inspector**: Detailed breakdown of validation mismatches (**Detalles error**), listing missing, extra, locked, or mismatched components, plus deterministic, actionable suggestions.
 - **Anchor Point Selection**: Choose between aligning using the **geometric centroid** (default) or a **specific key footprint** (e.g. `U1` → `U2`) as the fixed placement origin.
 - **Free Rotation + Mirror**: Rotate each destination by any angle (with ±90° quick buttons) and optionally mirror the block layout about its vertical axis (**Espejo X**), rotating/mirroring both the relative block geometry and individual footprint orientations in lockstep.
@@ -17,6 +19,9 @@ orientations from one selected reference block to one or more destination blocks
 - **Native Grouping (PCB_GROUP)**: Option to automatically bundle aligned footprints and copper into native KiCad groups.
 - **Interactive "Ver en PCB"**: Highlight and select reference or destination footprints directly in KiCad PCB Editor with a button or by double-clicking a table row.
 - **Temporary Preview**: The **Vista previa** button renders the footprints and replicated copper in their calculated positions on the PCB and lets you confirm or cancel (reverting cleanly to original positions and removing preview copper).
+- **Persistent Preview + Plugin Undo**: Preview remains active while the user inspects PCB Editor, with explicit **Aplicar** and **Cancelar vista previa** actions. **Deshacer última aplicación** restores the last operation even when native plugin Ctrl+Z is unavailable.
+- **Matrix Placement**: Destination origins can be distributed into a configurable row/column grid using millimetre spacing.
+- **Copper Modes**: Choose footprints only, tracks/vias, or complete copper including zones and graphics.
 
 The auto-detection intentionally uses deterministic PCB connectivity and geometry instead of a local AI model. This makes each decision reproducible and avoids introducing a probabilistic component into layout changes.
 

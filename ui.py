@@ -2,7 +2,6 @@
 
 import os
 
-import pcbnew
 import wx
 
 from . import config as config_module
@@ -294,6 +293,70 @@ class DiagnosticLogDialog(wx.Dialog):
             )
 
 
+class MappingDialog(wx.Dialog):
+    """Read-only explanation of how reference components map to a destination."""
+
+    def __init__(self, parent, target_index, entry):
+        super().__init__(
+            parent,
+            title="Correspondencias - Destino {}".format(target_index),
+            size=(720, 480),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+        )
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        header = wx.StaticText(
+            self,
+            label="Método: {}    Confianza: {}".format(
+                entry.get("method", "Desconocido"),
+                entry.get("confidence", "Pendiente"),
+            ),
+        )
+        header.SetFont(header.GetFont().Bold())
+        table = wx.ListCtrl(
+            self, style=wx.LC_REPORT | wx.BORDER_SUNKEN
+        )
+        table.InsertColumn(0, "Referencia", wx.LIST_FORMAT_LEFT, 95)
+        table.InsertColumn(1, "Destino", wx.LIST_FORMAT_LEFT, 95)
+        table.InsertColumn(2, "Componente / footprint", wx.LIST_FORMAT_LEFT, 350)
+        table.InsertColumn(3, "Estado", wx.LIST_FORMAT_LEFT, 110)
+        for row_index, row in enumerate(entry.get("mapping_rows", [])):
+            item = table.InsertItem(row_index, row["source"])
+            table.SetItem(item, 1, row["target"])
+            table.SetItem(item, 2, row["component"])
+            table.SetItem(item, 3, row["status"])
+            if row["status"] == "Ambigua":
+                table.SetItemTextColour(item, wx.Colour(180, 20, 20))
+        close_button = wx.Button(self, wx.ID_OK, label="Cerrar")
+        sizer.Add(header, 0, wx.EXPAND | wx.ALL, 10)
+        sizer.Add(table, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        sizer.Add(close_button, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        self.SetSizer(sizer)
+
+
+class MatrixDialog(wx.Dialog):
+    def __init__(self, parent):
+        super().__init__(parent, title="Distribuir destinos en matriz")
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        grid = wx.FlexGridSizer(3, 2, 8, 10)
+        self.columns = wx.SpinCtrl(self, min=1, max=100, initial=4)
+        self.spacing_x = wx.SpinCtrlDouble(
+            self, value="30", min=-1000, max=1000, inc=1
+        )
+        self.spacing_y = wx.SpinCtrlDouble(
+            self, value="30", min=-1000, max=1000, inc=1
+        )
+        grid.Add(wx.StaticText(self, label="Columnas:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self.columns, 0, wx.EXPAND)
+        grid.Add(wx.StaticText(self, label="Separación X (mm):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self.spacing_x, 0, wx.EXPAND)
+        grid.Add(wx.StaticText(self, label="Separación Y (mm):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self.spacing_y, 0, wx.EXPAND)
+        buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
+        sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 12)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        self.SetSizerAndFit(sizer)
+
+
 class BlockAlignerDialog(wx.Dialog):
     def __init__(self, parent, board):
         super().__init__(
@@ -306,6 +369,9 @@ class BlockAlignerDialog(wx.Dialog):
         self.board = board
         self.reference = []
         self.targets = []
+        self.schematic_pin_nets = None
+        self.preview_state = None
+        self.last_application = None
         self.config = config_module.load_config()
 
         self._init_ui()
@@ -373,10 +439,12 @@ class BlockAlignerDialog(wx.Dialog):
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_SUNKEN,
         )
         self.target_list.InsertColumn(0, "#", wx.LIST_FORMAT_CENTER, 40)
-        self.target_list.InsertColumn(1, "Footprints / Componentes", wx.LIST_FORMAT_LEFT, 320)
+        self.target_list.InsertColumn(1, "Footprints / Componentes", wx.LIST_FORMAT_LEFT, 245)
         self.target_list.InsertColumn(2, "Cantidad", wx.LIST_FORMAT_CENTER, 75)
         self.target_list.InsertColumn(3, "Rotación", wx.LIST_FORMAT_CENTER, 90)
-        self.target_list.InsertColumn(4, "Estado de Validación", wx.LIST_FORMAT_LEFT, 240)
+        self.target_list.InsertColumn(4, "Estado", wx.LIST_FORMAT_LEFT, 175)
+        self.target_list.InsertColumn(5, "Método", wx.LIST_FORMAT_LEFT, 105)
+        self.target_list.InsertColumn(6, "Confianza", wx.LIST_FORMAT_LEFT, 90)
 
         self.target_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_target_selection_change)
         self.target_list.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_target_selection_change)
@@ -389,6 +457,7 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_remove_target = wx.Button(self, label="Eliminar")
         self.btn_view_target = wx.Button(self, label="Ver en PCB")
         self.btn_inspect_error = wx.Button(self, label="Detalles error")
+        self.btn_mapping = wx.Button(self, label="Correspondencias")
         self.btn_export_log = wx.Button(self, label="📋 Diagnóstico")
         self.btn_clear = wx.Button(self, label="Limpiar todo")
 
@@ -397,6 +466,7 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_remove_target.Bind(wx.EVT_BUTTON, self.remove_target)
         self.btn_view_target.Bind(wx.EVT_BUTTON, self.view_target_in_pcb)
         self.btn_inspect_error.Bind(wx.EVT_BUTTON, self.show_error_details)
+        self.btn_mapping.Bind(wx.EVT_BUTTON, self.show_mapping_details)
         self.btn_export_log.Bind(wx.EVT_BUTTON, self.export_diagnostic_log)
         self.btn_clear.Bind(wx.EVT_BUTTON, self.clear)
 
@@ -405,6 +475,7 @@ class BlockAlignerDialog(wx.Dialog):
         target_btn_row.Add(self.btn_remove_target, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_view_target, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_inspect_error, 0, wx.RIGHT, 4)
+        target_btn_row.Add(self.btn_mapping, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_export_log, 0, wx.RIGHT, 4)
         target_btn_row.Add(self.btn_clear, 0)
 
@@ -418,11 +489,13 @@ class BlockAlignerDialog(wx.Dialog):
             self, value="0", min=-360.0, max=360.0, inc=90.0, size=(90, -1)
         )
         self.chk_mirror = wx.CheckBox(self, label="Espejo X")
+        self.btn_matrix = wx.Button(self, label="Distribuir matriz...")
 
         self.btn_rot_ccw.Bind(wx.EVT_BUTTON, self._on_rotate_ccw)
         self.btn_rot_cw.Bind(wx.EVT_BUTTON, self._on_rotate_cw)
         self.rotation_spin.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_rotation_changed)
         self.chk_mirror.Bind(wx.EVT_CHECKBOX, self._on_mirror_changed)
+        self.btn_matrix.Bind(wx.EVT_BUTTON, self.configure_matrix)
 
         transform_row.Add(
             wx.StaticText(self, label="Transformar destino seleccionado:"),
@@ -435,6 +508,7 @@ class BlockAlignerDialog(wx.Dialog):
         transform_row.Add(self.btn_rot_cw, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 4)
         transform_row.Add(self.rotation_spin, 0, wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 8)
         transform_row.Add(self.chk_mirror, 0, wx.ALIGN_CENTER_VERTICAL)
+        transform_row.Add(self.btn_matrix, 0, wx.LEFT | wx.ALIGN_CENTER_VERTICAL, 12)
 
         target_sizer.Add(self.target_list, 1, wx.EXPAND | wx.ALL, 6)
         target_sizer.Add(target_btn_row, 0, wx.ALIGN_LEFT | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
@@ -452,27 +526,44 @@ class BlockAlignerDialog(wx.Dialog):
             self, label="Agrupar componentes en KiCad (PCB_GROUP)"
         )
         self.chk_create_groups.SetValue(bool(self.config.get("create_groups_default", True)))
-        self.chk_replicate_tracks = wx.CheckBox(
-            self, label="Replicar cobre de la referencia (pistas, vías, zonas, formas)"
+        self.copper_mode = wx.Choice(
+            self,
+            choices=[
+                "Solo footprints",
+                "Footprints + pistas y vías",
+                "Cobre completo (incluye zonas y gráficos)",
+            ],
         )
-        self.chk_replicate_tracks.SetValue(bool(self.config.get("replicate_tracks_default", False)))
+        self.copper_mode.SetSelection(
+            1 if bool(self.config.get("replicate_tracks_default", False)) else 0
+        )
 
         options_row.Add(self.chk_create_groups, 0, wx.RIGHT | wx.TOP | wx.BOTTOM, 12)
-        options_row.Add(self.chk_replicate_tracks, 0, wx.LEFT | wx.TOP | wx.BOTTOM, 6)
+        options_row.Add(wx.StaticText(self, label="Replicación:"), 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 6)
+        options_row.Add(self.copper_mode, 0, wx.TOP | wx.BOTTOM, 6)
         main_sizer.Add(options_row, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         bottom_row = wx.BoxSizer(wx.HORIZONTAL)
         self.summary_status = wx.StaticText(self, label="Listo.")
         self.summary_status.SetForegroundColour(wx.Colour(100, 100, 100))
 
-        self.btn_preview = wx.Button(self, label="3. Vista previa y aplicar")
+        self.btn_preview = wx.Button(self, label="3. Generar vista previa")
+        self.btn_apply_preview = wx.Button(self, label="Aplicar")
+        self.btn_cancel_preview = wx.Button(self, label="Cancelar vista previa")
+        self.btn_undo_last = wx.Button(self, label="Deshacer última aplicación")
         self.btn_close = wx.Button(self, wx.ID_CANCEL, label="Cerrar")
 
         self.btn_preview.Bind(wx.EVT_BUTTON, self.align_targets)
+        self.btn_apply_preview.Bind(wx.EVT_BUTTON, self.apply_preview)
+        self.btn_cancel_preview.Bind(wx.EVT_BUTTON, self.cancel_preview)
+        self.btn_undo_last.Bind(wx.EVT_BUTTON, self.undo_last_application)
         self.btn_close.Bind(wx.EVT_BUTTON, lambda _evt: self.Close())
 
         bottom_row.Add(self.summary_status, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
         bottom_row.Add(self.btn_preview, 0, wx.ALL, 6)
+        bottom_row.Add(self.btn_apply_preview, 0, wx.ALL, 6)
+        bottom_row.Add(self.btn_cancel_preview, 0, wx.ALL, 6)
+        bottom_row.Add(self.btn_undo_last, 0, wx.ALL, 6)
         bottom_row.Add(self.btn_close, 0, wx.ALL, 6)
 
         main_sizer.Add(bottom_row, 0, wx.EXPAND | wx.ALL, 6)
@@ -485,6 +576,7 @@ class BlockAlignerDialog(wx.Dialog):
         has_targets = bool(self.targets)
         selected_row = self.target_list.GetFirstSelected()
         has_target_selected = selected_row != -1 and selected_row < len(self.targets)
+        preview_active = self.preview_state is not None
 
         self.btn_view_ref.Enable(has_reference)
         self.anchor_choice.Enable(has_reference)
@@ -493,13 +585,36 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_remove_target.Enable(has_target_selected)
         self.btn_view_target.Enable(has_target_selected)
         self.btn_inspect_error.Enable(has_target_selected and has_reference)
+        self.btn_mapping.Enable(has_target_selected and has_reference)
         self.btn_export_log.Enable(has_reference)
         self.btn_rot_ccw.Enable(has_target_selected)
         self.btn_rot_cw.Enable(has_target_selected)
         self.rotation_spin.Enable(has_target_selected)
         self.chk_mirror.Enable(has_target_selected)
+        self.btn_matrix.Enable(has_targets and not preview_active)
         self.btn_clear.Enable(has_reference or has_targets)
-        self.btn_preview.Enable(has_reference and has_targets)
+        mappings_safe = all(
+            entry.get("confidence") not in ("Ambigua", "Error")
+            for entry in self.targets
+        )
+        self.btn_preview.Enable(
+            has_reference and has_targets and mappings_safe and not preview_active
+        )
+        self.btn_apply_preview.Enable(preview_active)
+        self.btn_cancel_preview.Enable(preview_active)
+        self.btn_undo_last.Enable(
+            self.last_application is not None and not preview_active
+        )
+        self.btn_capture.Enable(not preview_active)
+        self.btn_add_target.Enable(has_reference and not preview_active)
+        self.btn_auto_discover.Enable(has_reference and not preview_active)
+        self.chk_create_groups.Enable(not preview_active)
+        self.copper_mode.Enable(not preview_active)
+        self.btn_remove_target.Enable(has_target_selected and not preview_active)
+        self.btn_rot_ccw.Enable(has_target_selected and not preview_active)
+        self.btn_rot_cw.Enable(has_target_selected and not preview_active)
+        self.rotation_spin.Enable(has_target_selected and not preview_active)
+        self.chk_mirror.Enable(has_target_selected and not preview_active)
 
         if has_target_selected:
             entry = self.targets[selected_row]
@@ -549,6 +664,7 @@ class BlockAlignerDialog(wx.Dialog):
             self.summary_status.SetLabel(
                 "Destino {}: Rotación configurada en {}.".format(selected_idx + 1, self._fmt_angle(new_rot))
             )
+            self._refresh_selected_mapping(selected_idx)
 
     def _on_rotate_ccw(self, _event):
         selected_idx = self.target_list.GetFirstSelected()
@@ -561,6 +677,7 @@ class BlockAlignerDialog(wx.Dialog):
             self.summary_status.SetLabel(
                 "Destino {}: Rotación configurada en {}.".format(selected_idx + 1, self._fmt_angle(new_rot))
             )
+            self._refresh_selected_mapping(selected_idx)
 
     def _on_rotation_changed(self, _event):
         selected_idx = self.target_list.GetFirstSelected()
@@ -571,6 +688,7 @@ class BlockAlignerDialog(wx.Dialog):
             self.summary_status.SetLabel(
                 "Destino {}: Rotación configurada en {}.".format(selected_idx + 1, self._fmt_angle(rot))
             )
+            self._refresh_selected_mapping(selected_idx)
 
     def _on_mirror_changed(self, _event):
         selected_idx = self.target_list.GetFirstSelected()
@@ -581,16 +699,90 @@ class BlockAlignerDialog(wx.Dialog):
             self.summary_status.SetLabel(
                 "Destino {}: Espejo X {}.".format(selected_idx + 1, state)
             )
+            self._refresh_selected_mapping(selected_idx)
+
+    def _refresh_selected_mapping(self, selected_idx):
+        entry = self.targets[selected_idx]
+        self._analyze_target_mapping(entry)
+        self.target_list.SetItem(
+            selected_idx, 6, entry.get("confidence", "Pendiente")
+        )
+        self._update_ui_state()
 
     def _on_anchor_changed(self, _event):
         anchor_name = self.anchor_choice.GetStringSelection()
         self.summary_status.SetLabel("Punto de anclaje seleccionado: {}.".format(anchor_name))
+        self._update_targets_table()
+
+    def show_mapping_details(self, _event):
+        selected_idx = self.target_list.GetFirstSelected()
+        if selected_idx == -1 or selected_idx >= len(self.targets):
+            return
+        self._analyze_target_mapping(self.targets[selected_idx])
+        dialog = MappingDialog(self, selected_idx + 1, self.targets[selected_idx])
+        dialog.ShowModal()
+        dialog.Destroy()
+
+    def _analyze_target_mapping(self, entry):
+        if not self.reference:
+            return
+        try:
+            analysis = core.mapping_analysis(
+                self.reference,
+                entry["footprints"],
+                anchor_ref_name=self.anchor_choice.GetStringSelection(),
+                rotation=float(entry.get("rotation", 0.0)),
+                mirror_x=bool(entry.get("mirror_x", False)),
+            )
+        except Exception as exc:
+            entry["mapping_rows"] = []
+            entry["ambiguous_refs"] = []
+            entry["mapping_error"] = str(exc)
+            entry["confidence"] = "Error"
+            return
+        entry.pop("mapping_error", None)
+        entry["mapping_rows"] = analysis.get("rows", [])
+        entry["ambiguous_refs"] = analysis.get("ambiguous", [])
+        if not analysis["ok"]:
+            entry["confidence"] = "Error"
+        elif entry["ambiguous_refs"]:
+            entry["confidence"] = "Ambigua"
+        elif entry.get("method") == "Manual":
+            entry["confidence"] = "Confirmada"
+        elif entry.get("method") == "Esquemático":
+            entry["confidence"] = "Alta"
+        else:
+            entry["confidence"] = "Media"
+
+    def configure_matrix(self, _event):
+        if not self.targets:
+            return
+        dialog = MatrixDialog(self)
+        if dialog.ShowModal() != wx.ID_OK:
+            dialog.Destroy()
+            return
+        columns = int(dialog.columns.GetValue())
+        spacing_x = int(round(dialog.spacing_x.GetValue() * 1000000))
+        spacing_y = int(round(dialog.spacing_y.GetValue() * 1000000))
+        dialog.Destroy()
+        base_x, base_y = core.centroid(self.targets[0]["footprints"])
+        for index, entry in enumerate(self.targets):
+            row, column = divmod(index, columns)
+            entry["target_origin_override"] = (
+                int(base_x + column * spacing_x),
+                int(base_y + row * spacing_y),
+            )
+        self._update_targets_table()
+        self.summary_status.SetLabel(
+            "Matriz configurada: {} columna(s), separación X/Y aplicada a la vista previa.".format(columns)
+        )
 
     def _update_targets_table(self):
         """Refresh the target ListCtrl with current targets and validation status."""
         self.target_list.DeleteAllItems()
         for idx, entry in enumerate(self.targets, 1):
             target_fps = entry["footprints"]
+            self._analyze_target_mapping(entry)
             item_idx = self.target_list.InsertItem(idx - 1, str(idx))
             refs_str = core.format_references(target_fps, max_display=10)
             self.target_list.SetItem(item_idx, 1, refs_str)
@@ -609,6 +801,13 @@ class BlockAlignerDialog(wx.Dialog):
                     self.target_list.SetItemBackgroundColour(item_idx, wx.Colour(240, 252, 240))
             else:
                 self.target_list.SetItem(item_idx, 4, "Pendiente de referencia")
+            self.target_list.SetItem(item_idx, 5, entry.get("method", "Desconocido"))
+            self.target_list.SetItem(item_idx, 6, entry.get("confidence", "Pendiente"))
+            if entry.get("confidence") == "Ambigua":
+                self.target_list.SetItemBackgroundColour(item_idx, wx.Colour(255, 245, 220))
+            elif entry.get("confidence") == "Error":
+                self.target_list.SetItem(item_idx, 4, "Error al analizar correspondencias")
+                self.target_list.SetItemTextColour(item_idx, wx.Colour(180, 20, 20))
 
         self.summary_status.SetLabel("Destinos registrados: {}.".format(len(self.targets)))
         self._update_ui_state()
@@ -630,7 +829,7 @@ class BlockAlignerDialog(wx.Dialog):
 
     def capture_reference(self, _event):
         try:
-            self.board = pcbnew.GetBoard()
+            self.board = tracks.get_current_board(self.board)
         except Exception:
             pass
         selected = tracks.select_footprints(self.board)
@@ -728,7 +927,7 @@ class BlockAlignerDialog(wx.Dialog):
             return
 
         try:
-            self.board = pcbnew.GetBoard()
+            self.board = tracks.get_current_board(self.board)
         except Exception:
             pass
 
@@ -756,7 +955,8 @@ class BlockAlignerDialog(wx.Dialog):
                 wx.SafeYield()
 
             discovered = discovery.auto_discover_blocks(
-                self.board, self.reference, [], self.config, progress_cb=progress
+                self.board, self.reference, [], self.config, progress_cb=progress,
+                schematic_pin_nets=self.schematic_pin_nets,
             )
         finally:
             wx.EndBusyCursor()
@@ -778,7 +978,13 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
         for block in discovered:
-            self.targets.append({"footprints": block, "rotation": 0.0, "mirror_x": False})
+            self.targets.append({
+                "footprints": block,
+                "rotation": 0.0,
+                "mirror_x": False,
+                "method": "Esquemático" if self.schematic_pin_nets else "PCB",
+                "confidence": "Alta" if self.schematic_pin_nets else "Media",
+            })
         self._update_targets_table()
         wx.MessageBox(
             "Se auto-detectaron y añadieron {} bloque(s) destino válido(s).\n\n"
@@ -797,6 +1003,7 @@ class BlockAlignerDialog(wx.Dialog):
             wx.EndBusyCursor()
 
         if not exported["available"]:
+            self.schematic_pin_nets = None
             self.summary_status.SetLabel(
                 "No se pudo verificar el esquemático: {}".format(exported["reason"])
             )
@@ -811,6 +1018,7 @@ class BlockAlignerDialog(wx.Dialog):
             candidates, exported["pin_nets"]
         )
         if not mismatches:
+            self.schematic_pin_nets = exported["pin_nets"]
             self.summary_status.SetLabel(
                 "PCB sincronizada con el esquemático; iniciando auto-detección."
             )
@@ -840,6 +1048,7 @@ class BlockAlignerDialog(wx.Dialog):
             )
         )
         self._write_log(report)
+        self.schematic_pin_nets = None
         self.summary_status.SetLabel(
             "Auto-detección detenida: PCB y esquemático no están sincronizados."
         )
@@ -864,7 +1073,7 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
         try:
-            self.board = pcbnew.GetBoard()
+            self.board = tracks.get_current_board(self.board)
         except Exception:
             pass
         selected = tracks.select_footprints(self.board)
@@ -897,7 +1106,13 @@ class BlockAlignerDialog(wx.Dialog):
                 wx.OK | wx.ICON_ERROR,
             )
             return
-        self.targets.append({"footprints": selected, "rotation": 0.0, "mirror_x": False})
+        self.targets.append({
+            "footprints": selected,
+            "rotation": 0.0,
+            "mirror_x": False,
+            "method": "Manual",
+            "confidence": "Confirmada",
+        })
         self._update_targets_table()
 
     def remove_target(self, _event):
@@ -921,18 +1136,35 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
 
+        for index, entry in enumerate(self.targets, 1):
+            self._analyze_target_mapping(entry)
+            if entry.get("ambiguous_refs"):
+                wx.MessageBox(
+                    "El destino {} tiene correspondencias ambiguas: {}.\n\n"
+                    "Revísalas con el botón 'Correspondencias' antes de aplicar.".format(
+                        index, ", ".join(entry["ambiguous_refs"])
+                    ),
+                    "Correspondencia ambigua",
+                    wx.OK | wx.ICON_WARNING,
+                )
+                self._update_targets_table()
+                return
+
         errors = []
         summary = []
         plans = []
         anchor_name = self.anchor_choice.GetStringSelection()
-        replicate_tracks = self.chk_replicate_tracks.GetValue()
+        copper_mode = self.copper_mode.GetSelection()
+        replicate_tracks = copper_mode >= 1
+        include_extended_copper = copper_mode >= 2
 
         ref_tracks, ref_zones, ref_shapes = [], [], []
         if replicate_tracks:
             ref_tracks = tracks.collect_reference_tracks(self.board, self.reference, self.config)
-            ref_zones, ref_shapes = tracks.collect_reference_zones_and_shapes(
-                self.board, self.reference, self.config
-            )
+            if include_extended_copper:
+                ref_zones, ref_shapes = tracks.collect_reference_zones_and_shapes(
+                    self.board, self.reference, self.config
+                )
 
         for index, entry in enumerate(self.targets, 1):
             target_fps = entry["footprints"]
@@ -946,6 +1178,7 @@ class BlockAlignerDialog(wx.Dialog):
             ok, plan = core.plan_block(
                 self.reference, target_fps,
                 anchor_ref_name=anchor_name, rotation=rot, mirror_x=mirror_x,
+                target_origin_override=entry.get("target_origin_override"),
             )
             if not ok:
                 errors.append("Destino {}: {}".format(index, plan))
@@ -1036,161 +1269,97 @@ class BlockAlignerDialog(wx.Dialog):
                 wx.OK | wx.ICON_ERROR,
             )
             return
-        pcbnew.Refresh()
+        tracks.refresh_editor()
 
-        confirmation = wx.MessageDialog(
-            self,
-            "Aplicación temporal (vista previa). Los footprints y el cobre se muestran ahora "
-            "en sus nuevas posiciones (Anclaje: {}, rotaciones/espejos aplicados).\n\n{}\n\n"
-            "¿Aplicar definitivamente estos cambios?".format(anchor_name, "\n".join(summary)),
-            "Vista previa de Block Aligner",
-            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+        self.preview_state = {
+            "plans": plans,
+            "original_positions": original_positions,
+            "created_tracks": created_tracks,
+            "summary": summary,
+        }
+        self.summary_status.SetLabel(
+            "Vista previa activa. Inspecciona la PCB y pulsa Aplicar o Cancelar vista previa."
         )
-        proceed = confirmation.ShowModal() == wx.ID_YES
-        confirmation.Destroy()
+        self._update_ui_state()
 
-        if not proceed:
-            self._rollback_preview(original_positions, created_tracks)
-            self.summary_status.SetLabel("Vista previa cancelada. Posiciones y cobre restaurados.")
+    def cancel_preview(self, _event):
+        if self.preview_state is None:
             return
+        self._rollback_preview(
+            self.preview_state["original_positions"],
+            self.preview_state["created_tracks"],
+        )
+        self.preview_state = None
+        self.summary_status.SetLabel(
+            "Vista previa cancelada. Posiciones y cobre restaurados."
+        )
+        self._update_ui_state()
 
-        # BOARD_COMMIT pertenece a la API C++ y no está exportado por todas las
-        # versiones de pcbnew/SWIG (incluido KiCad 10 en varias distribuciones).
-        # En ese caso la vista previa confirmada ya contiene la alineación final:
-        # la conservamos y añadimos los grupos con rollback manual ante errores.
-        if not hasattr(pcbnew, "BOARD_COMMIT"):
-            created_groups = []
-            try:
-                if self.chk_create_groups.GetValue():
-                    for index, plan in enumerate(plans, 1):
-                        group_items = plan["target_footprints"] + plan["cloned_tracks"]
-                        group = tracks.create_pcb_group(
-                            self.board,
-                            group_items,
-                            group_name="Bloque_Destino_{}".format(index),
-                        )
-                        if group is None:
-                            raise RuntimeError(
-                                "KiCad no pudo crear el grupo del destino {}.".format(index)
-                            )
-                        created_groups.append(group)
-            except Exception as exc:
-                for group in reversed(created_groups):
-                    try:
-                        self.board.Remove(group)
-                    except Exception:
-                        pass
-                self._rollback_preview(original_positions, created_tracks)
-                wx.MessageBox(
-                    "No se pudo completar la alineación. La PCB fue restaurada.\n\n{}".format(exc),
-                    "Error al aplicar Block Aligner",
-                    wx.OK | wx.ICON_ERROR,
-                )
-                return
-
-            pcbnew.Refresh()
-            total_copper = len(created_tracks)
-            copper_msg = (
-                " y {} elementos de cobre replicados".format(total_copper)
-                if total_copper else ""
-            )
-            self.summary_status.SetLabel(
-                "Alineación aplicada con éxito{} (sin Ctrl+Z nativo).".format(copper_msg)
-            )
-            wx.MessageBox(
-                "Alineación aplicada con éxito{}.\n\n"
-                "Tu versión de pcbnew no expone el deshacer nativo para plugins. "
-                "Guarda la PCB solo después de revisar el resultado.".format(copper_msg),
-                "Block Aligner",
-                wx.OK | wx.ICON_INFORMATION,
-            )
+    def apply_preview(self, _event):
+        if self.preview_state is None:
             return
-
-        # F1: revertir la vista previa y volver a aplicar dentro de un commit
-        # nativo para que Ctrl+Z deshaga la alineación completa.
+        state = self.preview_state
+        plans = state["plans"]
+        created_tracks = state["created_tracks"]
+        original_positions = state["original_positions"]
         created_groups = []
         try:
-            commit = pcbnew.BOARD_COMMIT(self.board)
-            # 1. Restaurar footprints a su estado original.
-            for target_fp, (x, y), old_orientation in original_positions:
-                tracks.set_position(target_fp, x, y)
-                target_fp.SetOrientation(old_orientation)
-            # 2. Eliminar el cobre de la vista previa.
-            for track in created_tracks:
-                try:
-                    self.board.Remove(track)
-                except Exception:
-                    pass
-            created_tracks = []
-
-            # 3. Reaplicar bajo commit, con cobre recién clonado.
-            for plan in plans:
-                for target_fp, x, y, source_fp, rot, mirror in plan["footprint_plan"]:
-                    commit.Modify(target_fp)
-                    tracks.set_position(target_fp, x, y)
-                    tracks.set_orientation_with_rotation(target_fp, source_fp, rot, mirror)
-
-                if replicate_tracks:
-                    fresh = tracks.plan_tracks(
-                        self.board, plan["pairs"], ref_tracks,
-                        plan["ref_origin"], plan["target_origin"],
-                        plan["_rotation"], plan["_mirror_x"],
-                        zones=ref_zones, shapes=ref_shapes,
-                    )
-                    plan["cloned_tracks"] = fresh["cloned_tracks"]
-                for track in plan["cloned_tracks"]:
-                    commit.Add(track)
-                    created_tracks.append(track)
-
-            # Los grupos forman parte del mismo commit que footprints y cobre.
             if self.chk_create_groups.GetValue():
                 for index, plan in enumerate(plans, 1):
-                    group_items = plan["target_footprints"] + plan["cloned_tracks"]
                     group = tracks.create_pcb_group(
                         self.board,
-                        group_items,
+                        plan["target_footprints"] + plan["cloned_tracks"],
                         group_name="Bloque_Destino_{}".format(index),
-                        add_to_board=False,
                     )
                     if group is None:
                         raise RuntimeError(
                             "KiCad no pudo crear el grupo del destino {}.".format(index)
                         )
-                    commit.Add(group)
                     created_groups.append(group)
-
-            commit.Push("Block Aligner: alinear bloques")
         except Exception as exc:
-            try:
-                commit.Revert()
-            except Exception:
-                # Algunas versiones antiguas de los bindings no exponen
-                # Revert(); el rollback manual de abajo sigue siendo obligatorio.
-                pass
             for group in reversed(created_groups):
                 try:
                     self.board.Remove(group)
                 except Exception:
                     pass
             self._rollback_preview(original_positions, created_tracks)
+            self.preview_state = None
+            self._update_ui_state()
             wx.MessageBox(
-                "No fue posible registrar una operación segura para Ctrl+Z. "
-                "La alineación se canceló y la PCB fue restaurada.\n\n{}".format(exc),
+                "No se pudo aplicar la vista previa. La PCB fue restaurada.\n\n{}".format(exc),
                 "Error al aplicar Block Aligner",
                 wx.OK | wx.ICON_ERROR,
             )
             return
-        pcbnew.Refresh()
 
-        total_copper = len(created_tracks)
-        copper_msg = " y {} elementos de cobre replicados".format(total_copper) if total_copper else ""
-        undo_msg = "Puedes deshacer toda la operación con Ctrl+Z."
-        self.summary_status.SetLabel("Alineación aplicada con éxito{}.".format(copper_msg))
-        wx.MessageBox(
-            "Alineación aplicada con éxito{}.\n{}".format(copper_msg, undo_msg),
-            "Block Aligner",
-            wx.OK | wx.ICON_INFORMATION,
+        self.last_application = {
+            "original_positions": original_positions,
+            "created_items": created_tracks + created_groups,
+        }
+        self.preview_state = None
+        tracks.refresh_editor()
+        omitted = sum(plan.get("omitted_count", 0) for plan in plans)
+        validation_note = (
+            " Se omitieron {} objeto(s) sin correspondencia de red.".format(omitted)
+            if omitted else " Validación posterior: sin omisiones de red."
         )
+        self.summary_status.SetLabel(
+            "Alineación aplicada. Puedes usar 'Deshacer última aplicación'.{}".format(
+                validation_note
+            )
+        )
+        self._update_ui_state()
+
+    def undo_last_application(self, _event):
+        if self.last_application is None:
+            return
+        state = self.last_application
+        self._rollback_preview(
+            state["original_positions"], state["created_items"]
+        )
+        self.last_application = None
+        self.summary_status.SetLabel("Última alineación deshecha por Block Aligner.")
+        self._update_ui_state()
 
     def _rollback_preview(self, original_positions, created_items):
         """Restore a preview without leaving partial changes on the board."""
@@ -1202,7 +1371,7 @@ class BlockAlignerDialog(wx.Dialog):
                 self.board.Remove(item)
             except Exception:
                 pass
-        pcbnew.Refresh()
+        tracks.refresh_editor()
 
     def clear(self, _event):
         self.reference = []

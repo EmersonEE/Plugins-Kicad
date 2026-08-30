@@ -258,7 +258,10 @@ def match_group_by_geometry(
     ]
 
 
-def plan_block(reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=False):
+def plan_block(
+    reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=False,
+    target_origin_override=None,
+):
     """Compute a non-destructive placement plan for one destination block.
 
     Returns ``(ok, result)`` where ``result`` on success is a dict with:
@@ -323,6 +326,11 @@ def plan_block(reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=F
                 for ref_fp, target_fp in pairs
             }
 
+    if target_origin_override is not None:
+        target_origin = (
+            int(target_origin_override[0]), int(target_origin_override[1])
+        )
+
     fp_plan = []
     for ref_fp, target_fp in pairs:
         ref_x, ref_y = position(ref_fp)
@@ -343,6 +351,72 @@ def plan_block(reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=F
         "pairs": pairs,
         "ref_origin": ref_origin,
         "target_origin": target_origin,
+    }
+
+
+def mapping_analysis(
+    reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=False,
+    ambiguity_tolerance_nm=250000, target_origin_override=None,
+):
+    """Describe reference→target pairs and flag geometrically ambiguous roles.
+
+    A pair is ambiguous only when another target with the same component key
+    and the same internal-connectivity signature is almost equally close to the
+    expected transformed position.
+    """
+    ok, plan = plan_block(
+        reference, target, anchor_ref_name=anchor_ref_name,
+        rotation=rotation, mirror_x=mirror_x,
+        target_origin_override=target_origin_override,
+    )
+    if not ok:
+        return {"ok": False, "error": plan, "rows": [], "ambiguous": []}
+
+    # SWIG-wrapped KiCad objects are not consistently hashable across builds.
+    # Object identity is stable for the lifetime of this plan and avoids using
+    # the wrapper itself as a dictionary key.
+    expected_by_target = {
+        id(target_fp): (x, y)
+        for target_fp, x, y, _source, _rotation, _mirror in plan["footprint_plan"]
+    }
+    tolerance_sq = float(ambiguity_tolerance_nm) ** 2
+    rows = []
+    ambiguous = []
+    for source, destination in plan["pairs"]:
+        expected = expected_by_target[id(destination)]
+        signature = connectivity_signature(source, reference)
+        alternatives = []
+        for candidate in target:
+            if footprint_key(candidate) != footprint_key(destination):
+                continue
+            if connectivity_signature(candidate, target) != signature:
+                continue
+            x, y = position(candidate)
+            distance_sq = (x - expected[0]) ** 2 + (y - expected[1]) ** 2
+            alternatives.append((distance_sq, candidate))
+        alternatives.sort(key=lambda item: (item[0], item[1].GetReference()))
+        is_ambiguous = (
+            len(alternatives) > 1
+            and alternatives[1][0] - alternatives[0][0] <= tolerance_sq
+        )
+        if is_ambiguous:
+            ambiguous.append(source.GetReference())
+        rows.append(
+            {
+                "source": source.GetReference(),
+                "target": destination.GetReference(),
+                "component": "{} / {}".format(
+                    source.GetValue(), footprint_name(source)
+                ),
+                "status": "Ambigua" if is_ambiguous else "Confirmada",
+            }
+        )
+    return {
+        "ok": True,
+        "error": "",
+        "rows": rows,
+        "ambiguous": ambiguous,
+        "plan": plan,
     }
 
 

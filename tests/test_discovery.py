@@ -80,6 +80,30 @@ class TestAutoDiscoverSuffix(unittest.TestCase):
     def test_no_reference(self):
         self.assertEqual(discovery.auto_discover_blocks(FakeBoard([]), [], []), [])
 
+    def test_schematic_connectivity_is_used_instead_of_stale_pcb_nets(self):
+        reference = [
+            FakeFootprint("R1", value="10k", fp_name="R", pads=[FakePad("1", 1)], x=0),
+            FakeFootprint("C1", value="10n", fp_name="C", pads=[FakePad("1", 2)], x=1000),
+        ]
+        target = [
+            FakeFootprint("R20", value="10k", fp_name="R", pads=[FakePad("1", 20)], x=100000),
+            FakeFootprint("C20", value="10n", fp_name="C", pads=[FakePad("1", 21)], x=101000),
+        ]
+        pin_nets = {
+            ("R1", "1"): "REF_INTERNAL",
+            ("C1", "1"): "REF_INTERNAL",
+            ("R20", "1"): "TARGET_INTERNAL",
+            ("C20", "1"): "TARGET_INTERNAL",
+        }
+        discovered = discovery.auto_discover_blocks(
+            FakeBoard(reference + target), reference, [],
+            schematic_pin_nets=pin_nets,
+        )
+        self.assertEqual(len(discovered), 1)
+        self.assertEqual(
+            {fp.GetReference() for fp in discovered[0]}, {"R20", "C20"}
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

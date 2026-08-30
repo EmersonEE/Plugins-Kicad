@@ -21,6 +21,22 @@ except Exception:
     pass
 
 
+def get_current_board(fallback=None):
+    """Backend boundary for obtaining the active PCB editor board."""
+    try:
+        return pcbnew.GetBoard() or fallback
+    except Exception:
+        return fallback
+
+
+def refresh_editor():
+    """Backend boundary for repainting PCB Editor."""
+    try:
+        pcbnew.Refresh()
+    except Exception:
+        pass
+
+
 def set_position(footprint, x, y):
     try:
         footprint.SetPosition(pcbnew.VECTOR2I(int(x), int(y)))

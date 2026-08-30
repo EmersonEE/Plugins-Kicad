@@ -14,9 +14,11 @@ import re
 try:
     from . import config as config_module
     from . import core
+    from . import schematic
 except ImportError:  # standalone execution (unit tests without KiCad)
     import config as config_module
     import core
+    import schematic
 
 
 def _is_global_net(
@@ -63,7 +65,10 @@ def _is_global_net(
     )
 
 
-def auto_discover_blocks(board, reference, existing_targets, config=None, progress_cb=None):
+def auto_discover_blocks(
+    board, reference, existing_targets, config=None, progress_cb=None,
+    schematic_pin_nets=None,
+):
     """Automatically find valid destination blocks across the PCB without mixing.
 
     ``progress_cb(done, total)``, when provided, is called periodically so the
@@ -71,6 +76,39 @@ def auto_discover_blocks(board, reference, existing_targets, config=None, progre
     """
     if not reference:
         return []
+
+    if schematic_pin_nets:
+        view_board, by_reference = schematic.connectivity_view(
+            board, schematic_pin_nets
+        )
+        view_reference = [
+            by_reference[fp.GetReference()]
+            for fp in reference
+            if fp.GetReference() in by_reference
+        ]
+        view_targets = []
+        for entry in existing_targets:
+            view_targets.append(
+                {
+                    **entry,
+                    "footprints": [
+                        by_reference[fp.GetReference()]
+                        for fp in entry["footprints"]
+                        if fp.GetReference() in by_reference
+                    ],
+                }
+            )
+        discovered = auto_discover_blocks(
+            view_board,
+            view_reference,
+            view_targets,
+            config=config,
+            progress_cb=progress_cb,
+        )
+        return [
+            [getattr(fp, "original", fp) for fp in block]
+            for block in discovered
+        ]
 
     config = config or config_module.default_config()
 

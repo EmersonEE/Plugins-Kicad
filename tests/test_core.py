@@ -141,6 +141,40 @@ class TestPlanBlock(unittest.TestCase):
         planned = {(entry[1], entry[2]) for entry in result["footprint_plan"]}
         self.assertEqual(planned, {(10000, 10000), (10000, 9000)})
 
+    def test_mapping_analysis_lists_confirmed_pairs(self):
+        refs = [FakeFootprint("R1", x=0), FakeFootprint("R2", x=1000000)]
+        targets = [
+            FakeFootprint("R3", x=10000000),
+            FakeFootprint("R4", x=11000000),
+        ]
+        result = core.mapping_analysis(refs, targets)
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(result["rows"]), 2)
+        self.assertEqual(result["ambiguous"], [])
+
+    def test_mapping_analysis_accepts_unhashable_footprints(self):
+        class UnhashableFootprint(FakeFootprint):
+            __hash__ = None
+
+        refs = [UnhashableFootprint("R1", x=0)]
+        targets = [UnhashableFootprint("R2", x=1000000)]
+        result = core.mapping_analysis(refs, targets)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["rows"][0]["target"], "R2")
+
+    def test_target_origin_override_places_block_on_matrix_point(self):
+        refs = [FakeFootprint("R1", x=0), FakeFootprint("R2", x=1000000)]
+        targets = [FakeFootprint("R3", x=5000000), FakeFootprint("R4", x=6000000)]
+        ok, result = core.plan_block(
+            refs, targets, target_origin_override=(20000000, 30000000)
+        )
+        self.assertTrue(ok)
+        planned = {(entry[1], entry[2]) for entry in result["footprint_plan"]}
+        self.assertEqual(
+            planned,
+            {(19500000, 30000000), (20500000, 30000000)},
+        )
+
     def test_locked_target_rejected(self):
         ref = FakeFootprint("R1", x=0, y=0)
         target = FakeFootprint("R2", x=500, y=500, locked=True)

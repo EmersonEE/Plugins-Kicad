@@ -146,3 +146,66 @@ def compare_footprint_nets(footprints, schematic_pin_nets):
                     }
                 )
     return mismatches
+
+
+class SchematicPadView:
+    """Pad proxy whose connectivity comes from the saved schematic netlist."""
+
+    def __init__(self, pad, reference, pin_nets):
+        self._pad = pad
+        self._net_name = pin_nets.get(
+            (str(reference), str(pad.GetNumber())), ""
+        )
+
+    def GetNetCode(self):
+        return self._net_name
+
+    def GetNetname(self):
+        return self._net_name
+
+    def GetNet(self):
+        return None
+
+    def __getattr__(self, name):
+        return getattr(self._pad, name)
+
+
+class SchematicFootprintView:
+    """Footprint proxy preserving geometry but replacing pad connectivity."""
+
+    def __init__(self, footprint, pin_nets):
+        self.original = footprint
+        reference = footprint.GetReference()
+        self._pads = [
+            SchematicPadView(pad, reference, pin_nets)
+            for pad in footprint.Pads()
+        ]
+
+    def Pads(self):
+        return self._pads
+
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
+
+class SchematicBoardView:
+    def __init__(self, board, footprints):
+        self.original = board
+        self._footprints = footprints
+
+    def GetFootprints(self):
+        return self._footprints
+
+    def __getattr__(self, name):
+        return getattr(self.original, name)
+
+
+def connectivity_view(board, pin_nets):
+    """Return a board proxy and reference lookup backed by schematic nets."""
+    views = [
+        SchematicFootprintView(footprint, pin_nets)
+        for footprint in board.GetFootprints()
+    ]
+    return SchematicBoardView(board, views), {
+        view.GetReference(): view for view in views
+    }

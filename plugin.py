@@ -67,6 +67,8 @@ class BlockAlignerPlugin(pcbnew.ActionPlugin):
 
     def _close_dialog(self, event):
         if self.dialog is not None:
+            if getattr(self.dialog, "preview_state", None) is not None:
+                self.dialog.cancel_preview(None)
             self.dialog.Destroy()
             self.dialog = None
         event.Skip()
