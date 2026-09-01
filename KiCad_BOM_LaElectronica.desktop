@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=KiCad BOM Estimator (La Electronica GT)
+GenericName=BOM Pricing Estimator
+Comment=Cotizador y generador de lista de materiales con precios en vivo de laelectronica.com.gt
+Exec=python3 /home/emerson/Documentos/KiCad_BOM_LaElectronica/main.py %f
+Icon=/home/emerson/Documentos/KiCad_BOM_LaElectronica/icon.png
+Terminal=false
+Categories=Development;Electronics;Engineering;
+MimeType=application/x-kicad-schematic;application/x-kicad-project;
