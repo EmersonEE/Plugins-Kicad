@@ -294,7 +294,7 @@ class DiagnosticLogDialog(wx.Dialog):
 
 
 class MappingDialog(wx.Dialog):
-    """Read-only explanation of how reference components map to a destination."""
+    """Inspect, edit, and highlight reference→destination mappings."""
 
     def __init__(self, parent, target_index, entry):
         super().__init__(
@@ -303,34 +303,128 @@ class MappingDialog(wx.Dialog):
             size=(720, 480),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
+        self.owner = parent
+        self.entry = entry
         sizer = wx.BoxSizer(wx.VERTICAL)
-        header = wx.StaticText(
+        self.header = wx.StaticText(
             self,
             label="Método: {}    Confianza: {}".format(
                 entry.get("method", "Desconocido"),
                 entry.get("confidence", "Pendiente"),
             ),
         )
-        header.SetFont(header.GetFont().Bold())
-        table = wx.ListCtrl(
+        self.header.SetFont(self.header.GetFont().Bold())
+        self.table = wx.ListCtrl(
             self, style=wx.LC_REPORT | wx.BORDER_SUNKEN
         )
-        table.InsertColumn(0, "Referencia", wx.LIST_FORMAT_LEFT, 95)
-        table.InsertColumn(1, "Destino", wx.LIST_FORMAT_LEFT, 95)
-        table.InsertColumn(2, "Componente / footprint", wx.LIST_FORMAT_LEFT, 350)
-        table.InsertColumn(3, "Estado", wx.LIST_FORMAT_LEFT, 110)
-        for row_index, row in enumerate(entry.get("mapping_rows", [])):
-            item = table.InsertItem(row_index, row["source"])
-            table.SetItem(item, 1, row["target"])
-            table.SetItem(item, 2, row["component"])
-            table.SetItem(item, 3, row["status"])
-            if row["status"] == "Ambigua":
-                table.SetItemTextColour(item, wx.Colour(180, 20, 20))
+        self.table.InsertColumn(0, "Referencia", wx.LIST_FORMAT_LEFT, 95)
+        self.table.InsertColumn(1, "Destino", wx.LIST_FORMAT_LEFT, 95)
+        self.table.InsertColumn(2, "Componente / footprint", wx.LIST_FORMAT_LEFT, 350)
+        self.table.InsertColumn(3, "Estado", wx.LIST_FORMAT_LEFT, 110)
+        self.table.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._highlight_pair)
+        edit_button = wx.Button(self, label="Cambiar destino...")
+        reset_button = wx.Button(self, label="Restablecer automático")
         close_button = wx.Button(self, wx.ID_OK, label="Cerrar")
-        sizer.Add(header, 0, wx.EXPAND | wx.ALL, 10)
-        sizer.Add(table, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
-        sizer.Add(close_button, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        edit_button.Bind(wx.EVT_BUTTON, self._change_target)
+        reset_button.Bind(wx.EVT_BUTTON, self._reset_overrides)
+        buttons = wx.BoxSizer(wx.HORIZONTAL)
+        buttons.Add(edit_button, 0, wx.RIGHT, 6)
+        buttons.Add(reset_button, 0, wx.RIGHT, 6)
+        buttons.AddStretchSpacer()
+        buttons.Add(close_button, 0)
+        sizer.Add(self.header, 0, wx.EXPAND | wx.ALL, 10)
+        sizer.Add(self.table, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        sizer.Add(buttons, 0, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(sizer)
+        self._refresh()
+
+    def _refresh(self):
+        self.owner._analyze_target_mapping(self.entry)
+        self.header.SetLabel(
+            "Método: {}    Confianza: {}    Doble clic: resaltar pareja en PCB".format(
+                self.entry.get("method", "Desconocido"),
+                self.entry.get("confidence", "Pendiente"),
+            )
+        )
+        self.table.DeleteAllItems()
+        for row_index, row in enumerate(self.entry.get("mapping_rows", [])):
+            item = self.table.InsertItem(row_index, row["source"])
+            self.table.SetItem(item, 1, row["target"])
+            self.table.SetItem(item, 2, row["component"])
+            self.table.SetItem(item, 3, row["status"])
+            if row["status"] == "Ambigua":
+                self.table.SetItemTextColour(item, wx.Colour(180, 20, 20))
+            elif row["status"] == "Manual":
+                self.table.SetItemTextColour(item, wx.Colour(20, 90, 170))
+
+    def _selected_row(self):
+        index = self.table.GetFirstSelected()
+        rows = self.entry.get("mapping_rows", [])
+        return rows[index] if 0 <= index < len(rows) else None
+
+    def _change_target(self, _event):
+        row = self._selected_row()
+        if row is None:
+            wx.MessageBox(
+                "Selecciona primero una correspondencia.",
+                "Correspondencias", wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+        source_fp = next(
+            fp for fp in self.owner.reference
+            if fp.GetReference() == row["source"]
+        )
+        candidates = sorted(
+            fp.GetReference() for fp in self.entry["footprints"]
+            if core.footprint_key(fp) == core.footprint_key(source_fp)
+        )
+        chooser = wx.SingleChoiceDialog(
+            self,
+            "Selecciona el destino para {}. Si ya está asignado, ambas parejas se intercambiarán.".format(row["source"]),
+            "Cambiar correspondencia",
+            candidates,
+        )
+        chooser.SetStringSelection(row["target"])
+        if chooser.ShowModal() == wx.ID_OK:
+            requested = chooser.GetStringSelection()
+            old_target = row["target"]
+            overrides = self.entry.setdefault("mapping_overrides", {})
+            other_row = next(
+                (item for item in self.entry.get("mapping_rows", [])
+                 if item["target"] == requested),
+                None,
+            )
+            overrides[row["source"]] = requested
+            if other_row and other_row["source"] != row["source"]:
+                overrides[other_row["source"]] = old_target
+            self._refresh()
+        chooser.Destroy()
+
+    def _reset_overrides(self, _event):
+        self.entry["mapping_overrides"] = {}
+        self._refresh()
+
+    def _highlight_pair(self, _event):
+        row = self._selected_row()
+        if row is None:
+            return
+        source = next(
+            (fp for fp in self.owner.reference
+             if fp.GetReference() == row["source"]), None
+        )
+        destination = next(
+            (fp for fp in self.entry["footprints"]
+             if fp.GetReference() == row["target"]), None
+        )
+        tracks.select_in_board(
+            self.owner.board,
+            [fp for fp in (source, destination) if fp is not None],
+        )
+        self.owner.summary_status.SetLabel(
+            "Correspondencia resaltada: {} → {}.".format(
+                row["source"], row["target"]
+            )
+        )
 
 
 class MatrixDialog(wx.Dialog):
@@ -371,7 +465,6 @@ class BlockAlignerDialog(wx.Dialog):
         self.targets = []
         self.schematic_pin_nets = None
         self.preview_state = None
-        self.last_application = None
         self.config = config_module.load_config()
 
         self._init_ui()
@@ -550,20 +643,17 @@ class BlockAlignerDialog(wx.Dialog):
         self.btn_preview = wx.Button(self, label="3. Generar vista previa")
         self.btn_apply_preview = wx.Button(self, label="Aplicar")
         self.btn_cancel_preview = wx.Button(self, label="Cancelar vista previa")
-        self.btn_undo_last = wx.Button(self, label="Deshacer última aplicación")
         self.btn_close = wx.Button(self, wx.ID_CANCEL, label="Cerrar")
 
         self.btn_preview.Bind(wx.EVT_BUTTON, self.align_targets)
         self.btn_apply_preview.Bind(wx.EVT_BUTTON, self.apply_preview)
         self.btn_cancel_preview.Bind(wx.EVT_BUTTON, self.cancel_preview)
-        self.btn_undo_last.Bind(wx.EVT_BUTTON, self.undo_last_application)
         self.btn_close.Bind(wx.EVT_BUTTON, lambda _evt: self.Close())
 
         bottom_row.Add(self.summary_status, 1, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
         bottom_row.Add(self.btn_preview, 0, wx.ALL, 6)
         bottom_row.Add(self.btn_apply_preview, 0, wx.ALL, 6)
         bottom_row.Add(self.btn_cancel_preview, 0, wx.ALL, 6)
-        bottom_row.Add(self.btn_undo_last, 0, wx.ALL, 6)
         bottom_row.Add(self.btn_close, 0, wx.ALL, 6)
 
         main_sizer.Add(bottom_row, 0, wx.EXPAND | wx.ALL, 6)
@@ -602,9 +692,6 @@ class BlockAlignerDialog(wx.Dialog):
         )
         self.btn_apply_preview.Enable(preview_active)
         self.btn_cancel_preview.Enable(preview_active)
-        self.btn_undo_last.Enable(
-            self.last_application is not None and not preview_active
-        )
         self.btn_capture.Enable(not preview_active)
         self.btn_add_target.Enable(has_reference and not preview_active)
         self.btn_auto_discover.Enable(has_reference and not preview_active)
@@ -722,6 +809,7 @@ class BlockAlignerDialog(wx.Dialog):
         dialog = MappingDialog(self, selected_idx + 1, self.targets[selected_idx])
         dialog.ShowModal()
         dialog.Destroy()
+        self._update_targets_table()
 
     def _analyze_target_mapping(self, entry):
         if not self.reference:
@@ -733,6 +821,7 @@ class BlockAlignerDialog(wx.Dialog):
                 anchor_ref_name=self.anchor_choice.GetStringSelection(),
                 rotation=float(entry.get("rotation", 0.0)),
                 mirror_x=bool(entry.get("mirror_x", False)),
+                pair_overrides=entry.get("mapping_overrides"),
             )
         except Exception as exc:
             entry["mapping_rows"] = []
@@ -747,6 +836,8 @@ class BlockAlignerDialog(wx.Dialog):
             entry["confidence"] = "Error"
         elif entry["ambiguous_refs"]:
             entry["confidence"] = "Ambigua"
+        elif entry.get("mapping_overrides"):
+            entry["confidence"] = "Manual"
         elif entry.get("method") == "Manual":
             entry["confidence"] = "Confirmada"
         elif entry.get("method") == "Esquemático":
@@ -1179,6 +1270,7 @@ class BlockAlignerDialog(wx.Dialog):
                 self.reference, target_fps,
                 anchor_ref_name=anchor_name, rotation=rot, mirror_x=mirror_x,
                 target_origin_override=entry.get("target_origin_override"),
+                pair_overrides=entry.get("mapping_overrides"),
             )
             if not ok:
                 errors.append("Destino {}: {}".format(index, plan))
@@ -1225,17 +1317,41 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
 
-        # F7: avisar de solapamiento espacial entre bloques destino planificados.
-        bboxes = core.planned_bboxes([p["footprint_plan"] for p in plans])
-        overlaps = core.overlapping_pairs(bboxes, self.config["overlap_margin_nm"])
-        if overlaps:
+        # Courtyards reales cuando están disponibles; bounding box físico como
+        # fallback para huellas sin F/B.CrtYd.
+        bboxes, bbox_sources = tracks.planned_physical_bboxes(plans)
+        overlaps = core.overlapping_pairs(
+            bboxes, self.config["overlap_margin_nm"]
+        )
+        fixed_collisions = tracks.planned_collisions_with_fixed(
+            self.board, plans, bboxes, self.config["overlap_margin_nm"]
+        )
+        if overlaps or fixed_collisions:
+            collision_lines = [
+                "Destino {} y Destino {}".format(a, b) for a, b in overlaps
+            ]
+            collision_lines.extend(
+                "Destino {} con {}".format(block, reference)
+                for block, reference in fixed_collisions[:20]
+            )
+            if len(fixed_collisions) > 20:
+                collision_lines.append(
+                    "... y {} colisiones más".format(len(fixed_collisions) - 20)
+                )
+            fallback_count = sum(
+                1 for sources in bbox_sources if "bounding-box" in sources
+            )
+            source_note = (
+                "\n\n{} bloque(s) contienen huellas sin courtyard; se usó su bounding box físico.".format(fallback_count)
+                if fallback_count else "\n\nComprobación realizada con courtyards."
+            )
             overlap_msg = wx.MessageDialog(
                 self,
-                "Los siguientes bloques destino quedarán solapados espacialmente:\n\n{}\n\n"
+                "Se detectaron colisiones físicas en la vista previa:\n\n{}{}\n\n"
                 "¿Continuar de todos modos?".format(
-                    "\n".join("Destino {} y {}".format(a, b) for a, b in overlaps)
+                    "\n".join(collision_lines), source_note
                 ),
-                "Solapamiento de bloques",
+                "Colisión de courtyards",
                 wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
             )
             if overlap_msg.ShowModal() != wx.ID_YES:
@@ -1332,10 +1448,6 @@ class BlockAlignerDialog(wx.Dialog):
             )
             return
 
-        self.last_application = {
-            "original_positions": original_positions,
-            "created_items": created_tracks + created_groups,
-        }
         self.preview_state = None
         tracks.refresh_editor()
         omitted = sum(plan.get("omitted_count", 0) for plan in plans)
@@ -1344,21 +1456,10 @@ class BlockAlignerDialog(wx.Dialog):
             if omitted else " Validación posterior: sin omisiones de red."
         )
         self.summary_status.SetLabel(
-            "Alineación aplicada. Puedes usar 'Deshacer última aplicación'.{}".format(
+            "Alineación aplicada. Guarda la PCB cuando hayas verificado el resultado.{}".format(
                 validation_note
             )
         )
-        self._update_ui_state()
-
-    def undo_last_application(self, _event):
-        if self.last_application is None:
-            return
-        state = self.last_application
-        self._rollback_preview(
-            state["original_positions"], state["created_items"]
-        )
-        self.last_application = None
-        self.summary_status.SetLabel("Última alineación deshecha por Block Aligner.")
         self._update_ui_state()
 
     def _rollback_preview(self, original_positions, created_items):

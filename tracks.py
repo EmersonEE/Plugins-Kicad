@@ -4,6 +4,8 @@ This module is the only place that touches the mutable ``pcbnew`` API for board
 objects. Pure geometry lives in ``core.py``; this module imports from it.
 """
 
+import math
+
 import pcbnew
 
 from . import config as config_module
@@ -35,6 +37,105 @@ def refresh_editor():
         pcbnew.Refresh()
     except Exception:
         pass
+
+
+def footprint_physical_bbox(footprint):
+    """Return an absolute courtyard bbox, falling back to footprint geometry."""
+    bbox = None
+    source = "bounding-box"
+    try:
+        layer = (
+            pcbnew.B_CrtYd
+            if footprint.GetLayer() == pcbnew.B_Cu
+            else pcbnew.F_CrtYd
+        )
+        courtyard = footprint.GetCourtyard(layer)
+        for method in ("BBox", "GetBoundingBox"):
+            if hasattr(courtyard, method):
+                candidate = getattr(courtyard, method)()
+                size = candidate.GetSize()
+                if int(size.x) > 0 and int(size.y) > 0:
+                    bbox = candidate
+                    source = "courtyard"
+                    break
+    except Exception:
+        bbox = None
+    if bbox is None:
+        try:
+            bbox = footprint.GetBoundingBox(False, False)
+        except TypeError:
+            bbox = footprint.GetBoundingBox()
+    origin = bbox.GetPosition()
+    size = bbox.GetSize()
+    return (
+        int(origin.x), int(origin.y),
+        int(origin.x + size.x), int(origin.y + size.y),
+        source,
+    )
+
+
+def planned_physical_bboxes(plans):
+    """Compute destination block AABBs from source courtyards at planned poses."""
+    block_boxes = []
+    sources = []
+    for plan in plans:
+        item_boxes = []
+        block_sources = set()
+        for target_fp, x, y, source_fp, rotation, mirror_x in plan["footprint_plan"]:
+            min_x, min_y, max_x, max_y, bbox_source = footprint_physical_bbox(source_fp)
+            block_sources.add(bbox_source)
+            source_x, source_y = core.position(source_fp)
+            center_x = (min_x + max_x) / 2.0
+            center_y = (min_y + max_y) / 2.0
+            offset_x, offset_y = core.transform_vector(
+                center_x - source_x, center_y - source_y,
+                rotation, mirror_x,
+            )
+            width = max_x - min_x
+            height = max_y - min_y
+            angle = math.radians(float(rotation))
+            rotated_width = abs(width * math.cos(angle)) + abs(height * math.sin(angle))
+            rotated_height = abs(width * math.sin(angle)) + abs(height * math.cos(angle))
+            planned_center_x = x + offset_x
+            planned_center_y = y + offset_y
+            item_boxes.append((
+                int(planned_center_x - rotated_width / 2),
+                int(planned_center_y - rotated_height / 2),
+                int(planned_center_x + rotated_width / 2),
+                int(planned_center_y + rotated_height / 2),
+            ))
+        block_boxes.append((
+            min(box[0] for box in item_boxes),
+            min(box[1] for box in item_boxes),
+            max(box[2] for box in item_boxes),
+            max(box[3] for box in item_boxes),
+        ))
+        sources.append(block_sources)
+    return block_boxes, sources
+
+
+def planned_collisions_with_fixed(board, plans, block_boxes, margin_nm=0):
+    """Return planned destination collisions with uninvolved board footprints."""
+    moving_refs = {
+        fp.GetReference()
+        for plan in plans for fp in plan["target_footprints"]
+    }
+    collisions = []
+    for footprint in board.GetFootprints():
+        if footprint.GetReference() in moving_refs:
+            continue
+        min_x, min_y, max_x, max_y, _source = footprint_physical_bbox(footprint)
+        fixed = (min_x, min_y, max_x, max_y)
+        for block_index, planned in enumerate(block_boxes, 1):
+            separated = (
+                planned[2] + margin_nm < fixed[0]
+                or fixed[2] + margin_nm < planned[0]
+                or planned[3] + margin_nm < fixed[1]
+                or fixed[3] + margin_nm < planned[1]
+            )
+            if not separated:
+                collisions.append((block_index, footprint.GetReference()))
+    return collisions
 
 
 def set_position(footprint, x, y):

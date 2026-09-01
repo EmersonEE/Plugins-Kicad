@@ -10,16 +10,19 @@ orientations from one selected reference block to one or more destination blocks
 - **Schematic Sync Guard**: Before auto-discovery, `kicad-cli` compares saved schematic pin nets with matching PCB footprints. If the PCB is stale, detection stops and asks the user to save the schematic and update the PCB with **F8**, preventing channels from being mixed by incomplete connectivity.
 - **Schematic-first discovery**: Once synchronization is confirmed, repeated blocks are formed using the saved schematic connectivity as the primary graph instead of relying only on current PCB proximity.
 - **Mapping inspector**: Every destination records its detection method and confidence, and **Correspondencias** shows each reference-to-destination pair. Ambiguous mappings block application.
+- **Manual mapping editor**: A selected pair can be reassigned to another equivalent destination. Occupied destinations are swapped automatically to preserve a one-to-one mapping, and automatic matching can be restored at any time.
+- **Pair highlighting**: Double-clicking a correspondence selects both its reference and destination footprints in PCB Editor for immediate visual confirmation.
 - **Error Inspector**: Detailed breakdown of validation mismatches (**Detalles error**), listing missing, extra, locked, or mismatched components, plus deterministic, actionable suggestions.
 - **Anchor Point Selection**: Choose between aligning using the **geometric centroid** (default) or a **specific key footprint** (e.g. `U1` → `U2`) as the fixed placement origin.
 - **Free Rotation + Mirror**: Rotate each destination by any angle (with ±90° quick buttons) and optionally mirror the block layout about its vertical axis (**Espejo X**), rotating/mirroring both the relative block geometry and individual footprint orientations in lockstep.
 - **Copper Replication**: Clones, rotates, and places copper tracks (`PCB_TRACK`, `PCB_ARC`), vias (`PCB_VIA`), zones (`PCB_ZONE`), and graphic shapes (`PCB_SHAPE`) from the reference block into all destination blocks, remapping internal nets to the destination pins. Items whose net has no valid destination mapping are skipped and reported.
-- **Safe apply and conditional native undo**: preview cancellation and application errors roll back cleanly. When the installed `pcbnew` Python module exposes `BOARD_COMMIT`, the alignment is one native **Ctrl+Z** operation; otherwise the plugin applies through the compatible SWIG path and warns that native undo is unavailable.
+- **Safe preview**: preview cancellation and application errors roll back temporary changes before the result is committed.
 - **Overlap Warning**: Warns before applying when two planned destination blocks would end up overlapping spatially.
+- **Courtyard collision check**: Preview validation uses `F.CrtYd`/`B.CrtYd` bounds when available and checks both destination-to-destination and destination-to-fixed-footprint collisions. Footprint geometry is used as a documented fallback when a courtyard is missing.
 - **Native Grouping (PCB_GROUP)**: Option to automatically bundle aligned footprints and copper into native KiCad groups.
 - **Interactive "Ver en PCB"**: Highlight and select reference or destination footprints directly in KiCad PCB Editor with a button or by double-clicking a table row.
 - **Temporary Preview**: The **Vista previa** button renders the footprints and replicated copper in their calculated positions on the PCB and lets you confirm or cancel (reverting cleanly to original positions and removing preview copper).
-- **Persistent Preview + Plugin Undo**: Preview remains active while the user inspects PCB Editor, with explicit **Aplicar** and **Cancelar vista previa** actions. **Deshacer última aplicación** restores the last operation even when native plugin Ctrl+Z is unavailable.
+- **Persistent Preview**: Preview remains active while the user inspects PCB Editor, with explicit **Aplicar** and **Cancelar vista previa** actions. Plugin-level undo is intentionally unavailable because removing already-adopted native `pcbnew` objects through SWIG can crash KiCad; cancel the preview before applying if the result is not correct.
 - **Matrix Placement**: Destination origins can be distributed into a configurable row/column grid using millimetre spacing.
 - **Copper Modes**: Choose footprints only, tracks/vias, or complete copper including zones and graphics.
 
@@ -33,7 +36,7 @@ The auto-detection intentionally uses deterministic PCB connectivity and geometr
 4. *(Optional)* Select an **Anchor component** from the dropdown if you want to align relative to a specific part instead of the block's centroid.
 5. Click **Auto-detectar** to find all repeated blocks on the PCB automatically, or select a block in PCB Editor and click **Añadir selección**.
 6. *(Optional)* Select a destination row and adjust its **Rotación** or **Espejo X**. If any block has errors, click **Detalles error** to inspect the cause.
-7. Click **Vista previa**, inspect the temporary positions in KiCad, and confirm to apply or cancel to restore. The completion message states whether native Ctrl+Z is available in the installed KiCad Python API.
+7. Click **Vista previa**, inspect the temporary positions in KiCad, and choose **Aplicar** or **Cancelar vista previa**. Once applied, verify and save the PCB; Block Aligner does not retain native objects for a later plugin-level undo.
 
 ## Configuration
 

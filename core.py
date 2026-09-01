@@ -258,9 +258,45 @@ def match_group_by_geometry(
     ]
 
 
+def apply_pair_overrides(pairs, overrides):
+    """Apply manual source→target choices while preserving a one-to-one map.
+
+    Selecting a target already assigned to another equivalent source swaps both
+    destinations. This keeps every target used exactly once.
+    """
+    if not overrides:
+        return True, list(pairs)
+    result = list(pairs)
+    for source_ref, target_ref in overrides.items():
+        source_index = next(
+            (i for i, pair in enumerate(result)
+             if pair[0].GetReference() == source_ref),
+            None,
+        )
+        target_index = next(
+            (i for i, pair in enumerate(result)
+             if pair[1].GetReference() == target_ref),
+            None,
+        )
+        if source_index is None or target_index is None:
+            return False, "La correspondencia manual {} → {} ya no existe.".format(
+                source_ref, target_ref
+            )
+        source_fp, old_target = result[source_index]
+        other_source, requested_target = result[target_index]
+        if footprint_key(source_fp) != footprint_key(requested_target):
+            return False, (
+                "{} y {} no tienen el mismo valor/footprint/pads."
+            ).format(source_ref, target_ref)
+        result[source_index] = (source_fp, requested_target)
+        if source_index != target_index:
+            result[target_index] = (other_source, old_target)
+    return True, result
+
+
 def plan_block(
     reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=False,
-    target_origin_override=None,
+    target_origin_override=None, pair_overrides=None,
 ):
     """Compute a non-destructive placement plan for one destination block.
 
@@ -302,6 +338,14 @@ def plan_block(
             pairs.append((ref_fp, target_fp))
             ref_to_target[ref_fp.GetReference()] = target_fp
 
+    overrides_ok, pairs_or_error = apply_pair_overrides(pairs, pair_overrides)
+    if not overrides_ok:
+        return False, pairs_or_error
+    pairs = pairs_or_error
+    ref_to_target = {
+        ref_fp.GetReference(): target_fp for ref_fp, target_fp in pairs
+    }
+
     if anchor_ref_name and anchor_ref_name not in CENTROID_ANCHORS:
         ref_anchor_fp = next(
             (fp for fp in reference if fp.GetReference() == anchor_ref_name),
@@ -321,6 +365,12 @@ def plan_block(
                     )
                 )
             pairs = rematched_pairs
+            overrides_ok, pairs_or_error = apply_pair_overrides(
+                pairs, pair_overrides
+            )
+            if not overrides_ok:
+                return False, pairs_or_error
+            pairs = pairs_or_error
             ref_to_target = {
                 ref_fp.GetReference(): target_fp
                 for ref_fp, target_fp in pairs
@@ -357,6 +407,7 @@ def plan_block(
 def mapping_analysis(
     reference, target, anchor_ref_name=None, rotation=0.0, mirror_x=False,
     ambiguity_tolerance_nm=250000, target_origin_override=None,
+    pair_overrides=None,
 ):
     """Describe reference→target pairs and flag geometrically ambiguous roles.
 
@@ -368,6 +419,7 @@ def mapping_analysis(
         reference, target, anchor_ref_name=anchor_ref_name,
         rotation=rotation, mirror_x=mirror_x,
         target_origin_override=target_origin_override,
+        pair_overrides=pair_overrides,
     )
     if not ok:
         return {"ok": False, "error": plan, "rows": [], "ambiguous": []}
@@ -395,7 +447,8 @@ def mapping_analysis(
             distance_sq = (x - expected[0]) ** 2 + (y - expected[1]) ** 2
             alternatives.append((distance_sq, candidate))
         alternatives.sort(key=lambda item: (item[0], item[1].GetReference()))
-        is_ambiguous = (
+        manually_selected = source.GetReference() in (pair_overrides or {})
+        is_ambiguous = not manually_selected and (
             len(alternatives) > 1
             and alternatives[1][0] - alternatives[0][0] <= tolerance_sq
         )
@@ -408,7 +461,11 @@ def mapping_analysis(
                 "component": "{} / {}".format(
                     source.GetValue(), footprint_name(source)
                 ),
-                "status": "Ambigua" if is_ambiguous else "Confirmada",
+                "status": (
+                    "Manual" if manually_selected
+                    else "Ambigua" if is_ambiguous
+                    else "Confirmada"
+                ),
             }
         )
     return {

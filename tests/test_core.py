@@ -175,6 +175,37 @@ class TestPlanBlock(unittest.TestCase):
             {(19500000, 30000000), (20500000, 30000000)},
         )
 
+    def test_manual_pair_override_swaps_equivalent_destinations(self):
+        refs = [FakeFootprint("R1", x=0), FakeFootprint("R2", x=1000000)]
+        targets = [
+            FakeFootprint("R3", x=10000000),
+            FakeFootprint("R4", x=11000000),
+        ]
+        ok, result = core.plan_block(
+            refs, targets, pair_overrides={"R1": "R4"}
+        )
+        self.assertTrue(ok)
+        pairs = {
+            source.GetReference(): destination.GetReference()
+            for source, destination in result["pairs"]
+        }
+        self.assertEqual(pairs, {"R1": "R4", "R2": "R3"})
+
+    def test_manual_override_rejects_incompatible_component(self):
+        refs = [
+            FakeFootprint("R1", value="10k"),
+            FakeFootprint("C1", value="10n", fp_name="C"),
+        ]
+        targets = [
+            FakeFootprint("R2", value="10k"),
+            FakeFootprint("C2", value="10n", fp_name="C"),
+        ]
+        ok, message = core.plan_block(
+            refs, targets, pair_overrides={"R1": "C2"}
+        )
+        self.assertFalse(ok)
+        self.assertIn("mismo valor", message)
+
     def test_locked_target_rejected(self):
         ref = FakeFootprint("R1", x=0, y=0)
         target = FakeFootprint("R2", x=500, y=500, locked=True)
