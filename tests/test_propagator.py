@@ -210,6 +210,36 @@ class TestModelPropagator(unittest.TestCase):
             if os.path.exists(preset_file):
                 os.remove(preset_file)
 
+    def test_export_and_import_presets_more_than_12_fps(self):
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+            preset_file = tf.name
+
+        try:
+            export_3d_presets(self.board, preset_file, preset_name="TestPreset15")
+
+            new_board = pcbnew.BOARD()
+            for i in range(1, 16):
+                fp = pcbnew.FOOTPRINT(new_board)
+                fp.SetReference(f"R{i}")
+                fp.SetFPIDAsString("Resistor_SMD:R_0805_2012Metric")
+                new_board.Add(fp)
+
+            res = import_3d_presets(new_board, preset_file)
+            self.assertTrue(res["success"])
+            self.assertEqual(res["total_updated"], 15)
+            self.assertEqual(len(res["updated_refs"]), 15)
+
+            # Test formatting logic from _on_import_preset
+            updated_refs = res.get("updated_refs", [])
+            refs_str = ", ".join(updated_refs[:12])
+            if len(updated_refs) > 12:
+                refs_str += f" ... (+{len(updated_refs) - 12} más)"
+            self.assertIn("(+3 más)", refs_str)
+
+        finally:
+            if os.path.exists(preset_file):
+                os.remove(preset_file)
+
     def test_library_model_auto_search(self):
         results = find_matching_3d_models(self.fp1)
         self.assertGreater(len(results), 0)

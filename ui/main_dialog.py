@@ -1200,9 +1200,10 @@ class ModelPropagatorDialog(wx.Dialog):
 
             updated_count = res.get("total_updated", 0)
             matched_fam = res.get("matched_families", 0)
-            refs_str = ", ".join(res.get("updated_refs", [])[:12])
-            if len(res.get("updated_refs", [])) > 12:
-                refs_str += f" ... (+{len(refs) - 12} más)"
+            updated_refs = res.get("updated_refs", [])
+            refs_str = ", ".join(updated_refs[:12])
+            if len(updated_refs) > 12:
+                refs_str += f" ... (+{len(updated_refs) - 12} más)"
 
             wx.MessageBox(
                 f"¡Preset '{res.get('preset_name')}' importado con éxito!\n\n"
