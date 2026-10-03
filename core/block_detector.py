@@ -142,8 +142,22 @@ class BlockDetector:
 
     @classmethod
     def read_system_clipboard(cls) -> Optional[str]:
-        """Lee el texto del portapapeles del sistema (compatible con Wayland wl-paste y wx)."""
-        # Intentar con wl-paste primero (Hyprland / Wayland nativo)
+        """Lee el texto del portapapeles del sistema (prioriza MIME application/kicad de Wayland)."""
+        # 1. Intentar con wl-paste especificando application/kicad
+        try:
+            res = subprocess.run(
+                ["wl-paste", "-t", "application/kicad", "--no-newline"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=2
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout
+        except Exception:
+            pass
+
+        # 2. Intentar con wl-paste general
         try:
             res = subprocess.run(
                 ["wl-paste", "--no-newline"],
@@ -157,7 +171,6 @@ class BlockDetector:
         except Exception:
             pass
 
-        # Si wl-paste no está disponible o falla, intentar con xclip o wx
         return None
 
     @classmethod

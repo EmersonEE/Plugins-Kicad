@@ -10,6 +10,7 @@ Clona bloques esquemáticos N veces con:
 from __future__ import annotations
 
 import copy
+import subprocess
 import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
@@ -17,7 +18,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from core.block_detector import SchematicBlock
 from core.label_renamer import LabelRenamer, RenamingRule
 from core.reference_annotator import ReferenceAnnotationMode, ReferenceAnnotator
-from core.sexpr import SAtom, SNode
+from core.sexpr import SAtom, SExprParser, SExprSerializer, SNode
 
 
 KICAD_GRID_MM = 1.27  # Grilla estándar de KiCad (50 mil = 1.27 mm)
@@ -166,3 +167,69 @@ class BlockDuplicator:
 
         report.new_items = new_all_items
         return report
+
+
+def build_kicad_clipboard_payload(
+    raw_input: str, block: SchematicBlock, new_items: List[SNode]
+) -> str:
+    """Construye un bloque S-expression válido para el portapapeles de KiCad (application/kicad)."""
+    cleaned = raw_input.strip()
+    if cleaned.startswith("("):
+        nodes_orig = SExprParser.parse_many(cleaned)
+        if len(nodes_orig) == 1 and nodes_orig[0].tag == "kicad_sch":
+            root = nodes_orig[0].clone()
+            for item in new_items:
+                root.add_child(item)
+            return SExprSerializer.serialize(root)
+
+    # Si no venía envuelto en (kicad_sch), lo construimos estrictamente
+    root = SNode("kicad_sch")
+    root.add_child(SNode("version", [SAtom(20260306)]))
+    root.add_child(SNode("generator", [SAtom("eeschema", is_quoted=True)]))
+    root.add_child(SNode("generator_version", [SAtom("10.0", is_quoted=True)]))
+
+    if block.lib_symbols:
+        lib_node = SNode("lib_symbols")
+        for sym in block.lib_symbols:
+            lib_node.add_child(sym.clone())
+        root.add_child(lib_node)
+
+    for orig_item in block.items:
+        root.add_child(orig_item.clone())
+
+    for new_item in new_items:
+        root.add_child(new_item.clone())
+
+    return SExprSerializer.serialize(root)
+
+
+def write_kicad_clipboard(sexpr_text: str) -> bool:
+    """Escribe datos en el portapapeles con el MIME type 'application/kicad' que KiCad requiere."""
+    # 1. Wayland nativo mediante wl-copy con -t application/kicad
+    try:
+        p = subprocess.Popen(
+            ["wl-copy", "-t", "application/kicad"],
+            stdin=subprocess.PIPE,
+            text=True
+        )
+        p.communicate(input=sexpr_text)
+        if p.returncode == 0:
+            return True
+    except Exception:
+        pass
+
+    # 2. Fallback con wxWidgets si está disponible
+    try:
+        import wx
+        if wx.TheClipboard.Open():
+            df = wx.DataFormat("application/kicad")
+            custom_data = wx.CustomDataObject(df)
+            custom_data.SetData(sexpr_text.encode("utf-8"))
+            wx.TheClipboard.SetData(custom_data)
+            wx.TheClipboard.Flush()
+            wx.TheClipboard.Close()
+            return True
+    except Exception:
+        pass
+
+    return False

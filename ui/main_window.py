@@ -442,36 +442,11 @@ class MainWindow(wx.Frame):
         duplicator = BlockDuplicator(cfg)
         report = duplicator.duplicate_block(self.clipboard_block)
 
-        # Armar el texto resultante que KiCad espera
-        # Todos los elementos originales + todos los elementos nuevos clonados
-        all_elements = list(self.clipboard_block.items) + report.new_items
+        from core.block_duplicator import build_kicad_clipboard_payload, write_kicad_clipboard
+        output_sexpr = build_kicad_clipboard_payload(self.clipboard_raw_text, self.clipboard_block, report.new_items)
 
-        # Si el texto original venía envuelto en (kicad_sch ...), recrear el contenedor
-        nodes_orig = SExprParser.parse_many(self.clipboard_raw_text)
-        if len(nodes_orig) == 1 and nodes_orig[0].tag == "kicad_sch":
-            root = nodes_orig[0].clone()
-            # Mantener encabezados y lib_symbols, agregar los nuevos items
-            for item in report.new_items:
-                root.add_child(item)
-            output_sexpr = SExprSerializer.serialize(root)
-        else:
-            # Lista suelta de nodos S-expressions
-            output_sexpr = SExprSerializer.serialize(all_elements)
-
-        # Copiar al portapapeles del sistema mediante wl-copy y wx.TheClipboard
-        copied_ok = False
-        try:
-            p = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE, text=True)
-            p.communicate(input=output_sexpr)
-            if p.returncode == 0:
-                copied_ok = True
-        except Exception:
-            pass
-
-        if not copied_ok and wx.TheClipboard.Open():
-            wx.TheClipboard.SetData(wx.TextDataObject(output_sexpr))
-            wx.TheClipboard.Close()
-            copied_ok = True
+        # Copiar al portapapeles de KiCad con MIME type application/kicad
+        copied_ok = write_kicad_clipboard(output_sexpr)
 
         msg = (
             f"🎉 ¡Éxito! El bloque se duplicó {n_copies} veces.\n\n"

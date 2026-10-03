@@ -54,23 +54,14 @@ def run_cli_clipboard(n: int, direction: str, pitch: float, question_mark: bool)
     duplicator = BlockDuplicator(cfg)
     report = duplicator.duplicate_block(block)
 
-    nodes_orig = SExprParser.parse_many(raw_text)
-    if len(nodes_orig) == 1 and nodes_orig[0].tag == "kicad_sch":
-        root = nodes_orig[0].clone()
-        for item in report.new_items:
-            root.add_child(item)
-        output_sexpr = SExprSerializer.serialize(root)
-    else:
-        all_elements = list(block.items) + report.new_items
-        output_sexpr = SExprSerializer.serialize(all_elements)
+    from core.block_duplicator import build_kicad_clipboard_payload, write_kicad_clipboard
+    output_sexpr = build_kicad_clipboard_payload(raw_text, block, report.new_items)
 
-    p = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE, text=True)
-    p.communicate(input=output_sexpr)
-    if p.returncode == 0:
-        print(f"✓ Bloque duplicado exitosamente x{n} en el portapapeles ({report.symbols_created} símbolos, {len(report.labels_renamed)} etiquetas).")
+    if write_kicad_clipboard(output_sexpr):
+        print(f"✓ Bloque duplicado exitosamente x{n} en el portapapeles con formato KiCad ({report.symbols_created} símbolos, {len(report.labels_renamed)} etiquetas).")
         return 0
     else:
-        print("Error al escribir en wl-copy.", file=sys.stderr)
+        print("Error al escribir en el portapapeles de KiCad.", file=sys.stderr)
         return 1
 
 
