@@ -1,0 +1,842 @@
+(kicad_sch
+(version 20260306)
+(generator "eeschema")
+(generator_version "10.0")
+(uuid "d0000000-1111-2222-3333-444444444444")
+	(paper
+		"A3"
+	)
+	(lib_symbols
+		(symbol
+			"Device:R"
+			(property
+				"Reference"
+				"R"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+			(property
+				"Value"
+				"R"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+		)
+		(symbol
+			"Device:D"
+			(property
+				"Reference"
+				"D"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+			(property
+				"Value"
+				"D"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+		)
+		(symbol
+			"Isolator:PC817"
+			(property
+				"Reference"
+				"U"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+			(property
+				"Value"
+				"PC817"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+		)
+		(symbol
+			"Transistor_BJT:2N3904"
+			(property
+				"Reference"
+				"Q"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+			(property
+				"Value"
+				"2N3904"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+		)
+		(symbol
+			"Relay:Relay_SPDT"
+			(property
+				"Reference"
+				"K"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+			(property
+				"Value"
+				"Relay_SPDT"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+		)
+		(symbol
+			"Connector:Conn_01x03_Pin"
+			(property
+				"Reference"
+				"J"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+			(property
+				"Value"
+				"Conn_01x03_Pin"
+(at 0 0 0)
+(effects (font (size 1.27 1.27)))
+			)
+		)
+	)
+	(hierarchical_label
+		"OUT_1"
+(shape output)
+(at 50.8 50.8 0)
+(effects (font (size 1.27 1.27)) (justify right))
+(uuid "a1000000-0000-0000-0000-000000000001")
+	)
+	(global_label
+		"+5V"
+(shape input)
+(at 76.2 38.1 0)
+(effects (font (size 1.27 1.27)))
+(uuid "a1000000-0000-0000-0000-000000000002")
+	)
+	(global_label
+		"GND"
+(shape input)
+(at 76.2 63.5 0)
+(effects (font (size 1.27 1.27)))
+(uuid "a1000000-0000-0000-0000-000000000003")
+	)
+	(global_label
+		"NC"
+(shape bidirectional)
+(at 152.4 45.72 0)
+(effects (font (size 1.27 1.27)))
+(uuid "a1000000-0000-0000-0000-000000000004")
+	)
+	(global_label
+		"COM"
+(shape bidirectional)
+(at 152.4 50.8 0)
+(effects (font (size 1.27 1.27)))
+(uuid "a1000000-0000-0000-0000-000000000005")
+	)
+	(global_label
+		"NA"
+(shape bidirectional)
+(at 152.4 55.88 0)
+(effects (font (size 1.27 1.27)))
+(uuid "a1000000-0000-0000-0000-000000000006")
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 63.5 50.8 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000001")
+		(property
+			"Reference"
+			"R5"
+(at 63.5 48.26 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1k"
+(at 63.5 53.34 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Isolator:PC817"
+		)
+(at 76.2 50.8 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000002")
+		(property
+			"Reference"
+			"U4"
+(at 76.2 45.72 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"PC817"
+(at 76.2 55.88 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 88.9 50.8 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000003")
+		(property
+			"Reference"
+			"R6"
+(at 88.9 48.26 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"10k"
+(at 88.9 53.34 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Transistor_BJT:2N3904"
+		)
+(at 101.6 50.8 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000004")
+		(property
+			"Reference"
+			"Q1"
+(at 101.6 45.72 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"2N3904"
+(at 101.6 55.88 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Relay:Relay_SPDT"
+		)
+(at 114.3 50.8 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000005")
+		(property
+			"Reference"
+			"K1"
+(at 114.3 45.72 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"SRD-05VDC"
+(at 114.3 55.88 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:D"
+		)
+(at 114.3 38.1 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000006")
+		(property
+			"Reference"
+			"D6"
+(at 114.3 35.56 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1N4007"
+(at 114.3 40.64 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Connector:Conn_01x03_Pin"
+		)
+(at 139.7 50.8 0)
+(unit 1)
+(uuid "b1000000-0000-0000-0000-000000000007")
+		(property
+			"Reference"
+			"J2"
+(at 139.7 45.72 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"Screw_Terminal"
+(at 139.7 55.88 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(wire
+		(pts
+(xy 50.8 50.8)
+(xy 63.5 50.8)
+		)
+		(stroke
+(width 0)
+			(type
+				default
+			)
+		)
+(uuid "c1000000-0000-0000-0000-000000000001")
+	)
+	(hierarchical_label
+		"OUT_2"
+(shape output)
+(at 50.8 101.6 0)
+(effects (font (size 1.27 1.27)) (justify right))
+(uuid "f080b35c-23cb-4e92-9756-d1eb4ae45020")
+	)
+	(global_label
+		"+5V"
+(shape input)
+(at 76.2 88.9 0)
+(effects (font (size 1.27 1.27)))
+(uuid "dce73884-8e15-4363-abf9-cc1db61fa70b")
+	)
+	(global_label
+		"GND"
+(shape input)
+(at 76.2 114.3 0)
+(effects (font (size 1.27 1.27)))
+(uuid "f0c5d0a9-bf0c-4a96-beb1-463414ed8f7d")
+	)
+	(global_label
+		"NC_2"
+(shape bidirectional)
+(at 152.4 96.52 0)
+(effects (font (size 1.27 1.27)))
+(uuid "eca3bf2c-3de2-42c9-90a0-36bdefa31d96")
+	)
+	(global_label
+		"COM_2"
+(shape bidirectional)
+(at 152.4 101.6 0)
+(effects (font (size 1.27 1.27)))
+(uuid "5eab2c3a-11a5-4e9c-b19a-85232ba2dfc3")
+	)
+	(global_label
+		"NA_2"
+(shape bidirectional)
+(at 152.4 106.68 0)
+(effects (font (size 1.27 1.27)))
+(uuid "ef0ce6b2-9941-4bba-8b4c-c2c9283acd3c")
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 63.5 101.6 0)
+(unit 1)
+(uuid "52c4784c-23e1-4bf9-8c7a-7322ef7c4e45")
+		(property
+			"Reference"
+			"R?"
+(at 63.5 99.06 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1k"
+(at 63.5 104.14 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Isolator:PC817"
+		)
+(at 76.2 101.6 0)
+(unit 1)
+(uuid "92612ea3-0285-4e68-8f62-22b2275488f3")
+		(property
+			"Reference"
+			"U?"
+(at 76.2 96.52 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"PC817"
+(at 76.2 106.68 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 88.9 101.6 0)
+(unit 1)
+(uuid "0343a127-5eae-46d4-b165-ab8d9dd9564f")
+		(property
+			"Reference"
+			"R?"
+(at 88.9 99.06 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"10k"
+(at 88.9 104.14 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Transistor_BJT:2N3904"
+		)
+(at 101.6 101.6 0)
+(unit 1)
+(uuid "34d28aa5-d327-4e69-b602-2c99ee1520e4")
+		(property
+			"Reference"
+			"Q?"
+(at 101.6 96.52 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"2N3904"
+(at 101.6 106.68 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Relay:Relay_SPDT"
+		)
+(at 114.3 101.6 0)
+(unit 1)
+(uuid "e9e3812e-83f0-4d46-9ced-6bf3ed2df68e")
+		(property
+			"Reference"
+			"K?"
+(at 114.3 96.52 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"SRD-05VDC"
+(at 114.3 106.68 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:D"
+		)
+(at 114.3 88.9 0)
+(unit 1)
+(uuid "d0e21503-d3b3-4690-84a6-e8a11808c5c7")
+		(property
+			"Reference"
+			"D?"
+(at 114.3 86.36 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1N4007"
+(at 114.3 91.44 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Connector:Conn_01x03_Pin"
+		)
+(at 139.7 101.6 0)
+(unit 1)
+(uuid "015f20ac-9c8b-4ae6-ba9b-aac46b8a10f4")
+		(property
+			"Reference"
+			"J?"
+(at 139.7 96.52 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"Screw_Terminal"
+(at 139.7 106.68 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(hierarchical_label
+		"OUT_3"
+(shape output)
+(at 50.8 152.4 0)
+(effects (font (size 1.27 1.27)) (justify right))
+(uuid "edd27c34-37ab-4588-b35a-f77a02230def")
+	)
+	(global_label
+		"+5V"
+(shape input)
+(at 76.2 139.7 0)
+(effects (font (size 1.27 1.27)))
+(uuid "521e375c-347f-4a93-ab5a-7f7108bb8c63")
+	)
+	(global_label
+		"GND"
+(shape input)
+(at 76.2 165.1 0)
+(effects (font (size 1.27 1.27)))
+(uuid "71fc8d8d-deef-4067-bd64-2a957eac9457")
+	)
+	(global_label
+		"NC_3"
+(shape bidirectional)
+(at 152.4 147.32 0)
+(effects (font (size 1.27 1.27)))
+(uuid "f1354cf5-e5de-42d3-9135-f68b5de73eae")
+	)
+	(global_label
+		"COM_3"
+(shape bidirectional)
+(at 152.4 152.4 0)
+(effects (font (size 1.27 1.27)))
+(uuid "c80c841d-7b89-4dda-9e60-a7c30f85abef")
+	)
+	(global_label
+		"NA_3"
+(shape bidirectional)
+(at 152.4 157.48 0)
+(effects (font (size 1.27 1.27)))
+(uuid "b64a11ef-4d04-49d7-a7a4-f3f1d47bc000")
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 63.5 152.4 0)
+(unit 1)
+(uuid "e63272a5-bb2c-4c6c-9d98-5236a319daad")
+		(property
+			"Reference"
+			"R?"
+(at 63.5 149.86 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1k"
+(at 63.5 154.94 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Isolator:PC817"
+		)
+(at 76.2 152.4 0)
+(unit 1)
+(uuid "8e7d7a2e-ab3c-40b9-8145-7666609fc37f")
+		(property
+			"Reference"
+			"U?"
+(at 76.2 147.32 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"PC817"
+(at 76.2 157.48 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 88.9 152.4 0)
+(unit 1)
+(uuid "d52397b9-8098-46c8-bc0f-ca25f57c7151")
+		(property
+			"Reference"
+			"R?"
+(at 88.9 149.86 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"10k"
+(at 88.9 154.94 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Transistor_BJT:2N3904"
+		)
+(at 101.6 152.4 0)
+(unit 1)
+(uuid "5fcf97b4-79a5-4d29-8322-34b2ee68d009")
+		(property
+			"Reference"
+			"Q?"
+(at 101.6 147.32 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"2N3904"
+(at 101.6 157.48 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Relay:Relay_SPDT"
+		)
+(at 114.3 152.4 0)
+(unit 1)
+(uuid "0f6ceb34-f082-4246-828c-86f4b15e380e")
+		(property
+			"Reference"
+			"K?"
+(at 114.3 147.32 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"SRD-05VDC"
+(at 114.3 157.48 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:D"
+		)
+(at 114.3 139.7 0)
+(unit 1)
+(uuid "7cd82f9f-e524-4feb-b351-0e5eac591a39")
+		(property
+			"Reference"
+			"D?"
+(at 114.3 137.16 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1N4007"
+(at 114.3 142.24 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Connector:Conn_01x03_Pin"
+		)
+(at 139.7 152.4 0)
+(unit 1)
+(uuid "adb55d63-9561-451c-ab08-bf7256c219a8")
+		(property
+			"Reference"
+			"J?"
+(at 139.7 147.32 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"Screw_Terminal"
+(at 139.7 157.48 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(hierarchical_label
+		"OUT_4"
+(shape output)
+(at 50.8 203.2 0)
+(effects (font (size 1.27 1.27)) (justify right))
+(uuid "a7a31dc2-c213-495b-8e87-fcfd12f1cd47")
+	)
+	(global_label
+		"+5V"
+(shape input)
+(at 76.2 190.5 0)
+(effects (font (size 1.27 1.27)))
+(uuid "10db70f8-d762-467a-b3f0-54c21328e03d")
+	)
+	(global_label
+		"GND"
+(shape input)
+(at 76.2 215.9 0)
+(effects (font (size 1.27 1.27)))
+(uuid "59eb62c8-1b49-4c8c-be80-9308e4edd3a4")
+	)
+	(global_label
+		"NC_4"
+(shape bidirectional)
+(at 152.4 198.12 0)
+(effects (font (size 1.27 1.27)))
+(uuid "7b78bfb3-581e-4c35-89e7-b3a0b2190798")
+	)
+	(global_label
+		"COM_4"
+(shape bidirectional)
+(at 152.4 203.2 0)
+(effects (font (size 1.27 1.27)))
+(uuid "517bdef3-5af0-45ac-8b78-452d27f8c946")
+	)
+	(global_label
+		"NA_4"
+(shape bidirectional)
+(at 152.4 208.28 0)
+(effects (font (size 1.27 1.27)))
+(uuid "9b7a3434-ee1d-4a66-bfd0-6d64094fa07c")
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 63.5 203.2 0)
+(unit 1)
+(uuid "88e6b4d4-3f63-4125-bcdd-8046d10943ad")
+		(property
+			"Reference"
+			"R?"
+(at 63.5 200.66 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1k"
+(at 63.5 205.74 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Isolator:PC817"
+		)
+(at 76.2 203.2 0)
+(unit 1)
+(uuid "3a50c11e-aa3b-442a-a818-f8450ee7ac40")
+		(property
+			"Reference"
+			"U?"
+(at 76.2 198.12 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"PC817"
+(at 76.2 208.28 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:R"
+		)
+(at 88.9 203.2 0)
+(unit 1)
+(uuid "a9d576c9-c246-4116-bb19-ea14bff55f45")
+		(property
+			"Reference"
+			"R?"
+(at 88.9 200.66 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"10k"
+(at 88.9 205.74 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Transistor_BJT:2N3904"
+		)
+(at 101.6 203.2 0)
+(unit 1)
+(uuid "70e55f06-3085-41d7-a55d-1aa58b3b9303")
+		(property
+			"Reference"
+			"Q?"
+(at 101.6 198.12 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"2N3904"
+(at 101.6 208.28 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Relay:Relay_SPDT"
+		)
+(at 114.3 203.2 0)
+(unit 1)
+(uuid "58be4082-bac9-410b-9c53-958511d7f3d7")
+		(property
+			"Reference"
+			"K?"
+(at 114.3 198.12 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"SRD-05VDC"
+(at 114.3 208.28 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Device:D"
+		)
+(at 114.3 190.5 0)
+(unit 1)
+(uuid "f07ef6c7-cbe0-4ca7-9de2-702bba2443ad")
+		(property
+			"Reference"
+			"D?"
+(at 114.3 187.96 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"1N4007"
+(at 114.3 193.04 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+	(symbol
+		(lib_id
+			"Connector:Conn_01x03_Pin"
+		)
+(at 139.7 203.2 0)
+(unit 1)
+(uuid "03282460-d269-4419-93fc-49d81881c47e")
+		(property
+			"Reference"
+			"J?"
+(at 139.7 198.12 0)
+(effects (font (size 1.27 1.27)))
+		)
+		(property
+			"Value"
+			"Screw_Terminal"
+(at 139.7 208.28 0)
+(effects (font (size 1.27 1.27)))
+		)
+	)
+)
