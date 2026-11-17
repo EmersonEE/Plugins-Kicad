@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=KiCad Schematic Footprint Manager
+GenericName=Footprint Batch Editor
+Comment=Asignador y editor de huellas en lote para esquemáticos de KiCad
+Exec=python3 /home/emerson/Documentos/Schematic_Footprint_Manager/main.py %f
+Icon=/home/emerson/Documentos/Schematic_Footprint_Manager/icon.png
+Terminal=false
+Categories=Development;Electronics;Engineering;
+MimeType=application/x-kicad-schematic;application/x-kicad-project;
