@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.bak*
+*-erc.rpt
+.pytest_cache/

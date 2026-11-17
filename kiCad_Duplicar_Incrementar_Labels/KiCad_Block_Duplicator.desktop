@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=KiCad Block Duplicator & Label Incrementor
+GenericName=Schematic Block Duplicator
+Comment=Duplica bloques de esquemáticos e incrementa etiquetas automáticamente en KiCad
+Exec=python3 /home/emerson/Documentos/kiCad_Duplicar_Incrementar_Labels/main.py %f
+Icon=/home/emerson/Documentos/kiCad_Duplicar_Incrementar_Labels/icon.png
+Terminal=false
+Categories=Development;Electronics;Engineering;
+MimeType=application/x-kicad-schematic;application/x-kicad-project;
