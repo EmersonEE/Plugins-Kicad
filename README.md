@@ -20,51 +20,74 @@ Repositorio consolidado (monorepo) que reúne los plugins de acción (`ActionPlu
 
 ## 🛠️ Instalación mediante Enlaces Simbólicos
 
-La instalación recomendada de los plugins se realiza mediante **enlaces simbólicos (symlinks)** hacia la ruta de plugins de KiCad 10. De esta manera, cualquier actualización o cambio en este repositorio se refleja inmediatamente en KiCad sin necesidad de reinstalar ni duplicar archivos.
+La instalación se realiza mediante **enlaces simbólicos (symlinks)** hacia la ruta oficial de plugins de KiCad 10:
 
-Ruta de plugins de KiCad 10:
 ```text
 /home/emerson/.local/share/kicad/10.0/3rdparty/plugins
 ```
-*(O de forma equivalente: `~/.local/share/kicad/10.0/3rdparty/plugins`)*
+*(Equivalente a: `~/.local/share/kicad/10.0/3rdparty/plugins`)*
 
-### 1. Instalación Rápida de Plugins de PCB (Script Automático)
+De este modo, cualquier cambio o actualización en este repositorio se refleja inmediatamente en KiCad sin necesidad de reinstalar ni copiar archivos manualmente.
 
-Puedes ejecutar el script incluido [`install_symlinks.sh`](./install_symlinks.sh) desde la raíz de este repositorio:
+### Estructura de Enlaces Simbólicos Creados
+```text
+/home/emerson/.local/share/kicad/10.0/3rdparty/plugins/
+├── Block_Aligner -> /home/emerson/Documentos/Plugins-Kicad/Block_Aligner
+├── KiCad_3D_Model_Propagator -> /home/emerson/Documentos/Plugins-Kicad/KiCad_3D_Model_Propagator
+└── kicad-routing-progress-plugin -> /home/emerson/Documentos/Plugins-Kicad/kicad-routing-progress-plugin
+```
 
+---
+
+## 🔄 Restauración en un Nuevo Sistema (después de formatear)
+
+Cuando formatees tu equipo o instales en una nueva máquina, sigue estos sencillos pasos:
+
+### Paso 1: Clonar el repositorio
+```bash
+cd ~/Documentos
+git clone https://github.com/EmersonEE/Plugins-Kicad.git
+cd Plugins-Kicad
+```
+
+### Paso 2: Instalación Automática (Recomendado)
+Ejecuta el script incluido [`install_symlinks.sh`](./install_symlinks.sh):
 ```bash
 chmod +x install_symlinks.sh
 ./install_symlinks.sh
 ```
 
-### 2. Instalación Manual por Comandos
+El script se encargará automáticamente de:
+1. Crear el directorio `/home/emerson/.local/share/kicad/10.0/3rdparty/plugins`.
+2. Crear los enlaces simbólicos de los Action Plugins de PCB.
+3. Crear los enlaces simbólicos de los accesos directos `.desktop` en `~/.local/share/applications`.
 
-Si prefieres crearlos manualmente, ejecuta en tu terminal:
+### Opción Alternativa: Instalación Manual por Comandos
+Si prefieres crearlos paso a paso en la terminal:
 
 ```bash
-# 1. Crear el directorio de plugins de KiCad 10 si no existe
+# 1. Crear el directorio de plugins de KiCad 10
 mkdir -p /home/emerson/.local/share/kicad/10.0/3rdparty/plugins
 
-# 2. Crear los enlaces simbólicos de los Action Plugins
+# 2. Enlazar los Action Plugins de PCB
 ln -sfn /home/emerson/Documentos/Plugins-Kicad/Block_Aligner /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/Block_Aligner
 ln -sfn /home/emerson/Documentos/Plugins-Kicad/KiCad_3D_Model_Propagator /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/KiCad_3D_Model_Propagator
 ln -sfn /home/emerson/Documentos/Plugins-Kicad/kicad-routing-progress-plugin /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/kicad-routing-progress-plugin
 ```
 
-### 3. Recargar Plugins en KiCad (Sin reiniciar)
-
+### Paso 3: Recargar Plugins en KiCad (Sin reiniciar)
 Una vez creados los enlaces:
 1. Abre **KiCad PCB Editor**.
-2. Dirígete al menú: **Herramientas → Plugins externos → Refrescar plugins** (o **Actualizar plugins**).
-3. Verás los iconos y opciones de los plugins listos en la barra de herramientas y menús.
+2. Ve al menú superior: **Herramientas → Plugins externos → Refrescar plugins** (o **Actualizar plugins**).
+3. Los botones y herramientas aparecerán listos en la barra superior y menús contextuales.
 
 ---
 
 ## 🖥️ Aplicaciones de Escritorio Complementarias
 
-Para las aplicaciones de esquemático y utilidades de escritorio (**`KiCad_BOM_LaElectronica`**, **`kiCad_Duplicar_Incrementar_Labels`** y **`Schematic_Footprint_Manager`**):
+Para las herramientas de esquemático (**`KiCad_BOM_LaElectronica`**, **`kiCad_Duplicar_Incrementar_Labels`** y **`Schematic_Footprint_Manager`**):
 
-### Enlace al menú de aplicaciones de Linux (`.desktop`):
+### Enlazar al menú de aplicaciones de Linux (`.desktop`):
 ```bash
 mkdir -p ~/.local/share/applications
 
