@@ -18,31 +18,66 @@ Repositorio consolidado (monorepo) que reúne los plugins de acción (`ActionPlu
 
 ---
 
-## 🛠️ Instalación y Uso
+## 🛠️ Instalación mediante Enlaces Simbólicos
 
-### 1. Plugins de Acción del Editor PCB (`ActionPlugin`)
-Para **`Block_Aligner`**, **`KiCad_3D_Model_Propagator`** y **`kicad-routing-progress-plugin`**:
+La instalación recomendada de los plugins se realiza mediante **enlaces simbólicos (symlinks)** hacia la ruta de plugins de KiCad 10. De esta manera, cualquier actualización o cambio en este repositorio se refleja inmediatamente en KiCad sin necesidad de reinstalar ni duplicar archivos.
 
-Copiar la carpeta del plugin correspondiente al directorio de scripting de KiCad según el sistema operativo:
+Ruta de plugins de KiCad 10:
+```text
+/home/emerson/.local/share/kicad/10.0/3rdparty/plugins
+```
+*(O de forma equivalente: `~/.local/share/kicad/10.0/3rdparty/plugins`)*
 
-* **Linux**: `~/.local/share/kicad/<versión>/scripting/plugins/`
-* **Windows**: `%USERPROFILE%\Documents\KiCad\<versión>\scripting\plugins\`
-* **macOS**: `~/Documents/KiCad/<versión>/scripting/plugins/`
+### 1. Instalación Rápida de Plugins de PCB (Script Automático)
 
-En el PCB Editor:
-1. Ir a **Preferencias → Preferencias → Action Plugins**.
-2. Hacer clic en **Reload Plugins** (o desde la barra de herramientas: **Herramientas → External Plugins → Refresh Plugins**).
-
-### 2. Aplicaciones de Escritorio Complementarias
-Para **`KiCad_BOM_LaElectronica`**, **`kiCad_Duplicar_Incrementar_Labels`** y **`Schematic_Footprint_Manager`**:
-
-Cada una incluye su punto de entrada principal (`main.py`) y lanzador `.desktop` para integrarse al menú de aplicaciones en Linux:
+Puedes ejecutar el script incluido [`install_symlinks.sh`](./install_symlinks.sh) desde la raíz de este repositorio:
 
 ```bash
-# Ejemplo de ejecución directa:
-python3 KiCad_BOM_LaElectronica/main.py
-python3 kiCad_Duplicar_Incrementar_Labels/main.py
-python3 Schematic_Footprint_Manager/main.py
+chmod +x install_symlinks.sh
+./install_symlinks.sh
+```
+
+### 2. Instalación Manual por Comandos
+
+Si prefieres crearlos manualmente, ejecuta en tu terminal:
+
+```bash
+# 1. Crear el directorio de plugins de KiCad 10 si no existe
+mkdir -p /home/emerson/.local/share/kicad/10.0/3rdparty/plugins
+
+# 2. Crear los enlaces simbólicos de los Action Plugins
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/Block_Aligner /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/Block_Aligner
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/KiCad_3D_Model_Propagator /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/KiCad_3D_Model_Propagator
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/kicad-routing-progress-plugin /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/kicad-routing-progress-plugin
+```
+
+### 3. Recargar Plugins en KiCad (Sin reiniciar)
+
+Una vez creados los enlaces:
+1. Abre **KiCad PCB Editor**.
+2. Dirígete al menú: **Herramientas → Plugins externos → Refrescar plugins** (o **Actualizar plugins**).
+3. Verás los iconos y opciones de los plugins listos en la barra de herramientas y menús.
+
+---
+
+## 🖥️ Aplicaciones de Escritorio Complementarias
+
+Para las aplicaciones de esquemático y utilidades de escritorio (**`KiCad_BOM_LaElectronica`**, **`kiCad_Duplicar_Incrementar_Labels`** y **`Schematic_Footprint_Manager`**):
+
+### Enlace al menú de aplicaciones de Linux (`.desktop`):
+```bash
+mkdir -p ~/.local/share/applications
+
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/KiCad_BOM_LaElectronica/KiCad_BOM_LaElectronica.desktop ~/.local/share/applications/
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/kiCad_Duplicar_Incrementar_Labels/KiCad_Block_Duplicator.desktop ~/.local/share/applications/
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/Schematic_Footprint_Manager/Schematic_Footprint_Manager.desktop ~/.local/share/applications/
+```
+
+### Ejecución directa desde terminal:
+```bash
+python3 /home/emerson/Documentos/Plugins-Kicad/KiCad_BOM_LaElectronica/main.py
+python3 /home/emerson/Documentos/Plugins-Kicad/kiCad_Duplicar_Incrementar_Labels/main.py
+python3 /home/emerson/Documentos/Plugins-Kicad/Schematic_Footprint_Manager/main.py
 ```
 
 ---

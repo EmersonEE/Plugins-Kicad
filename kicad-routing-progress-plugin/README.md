@@ -36,8 +36,7 @@ Para cualquier net con $N$ pads:
 Desde la terminal en Linux:
 
 ```bash
-ln -sfn /home/emerson/Documentos/kicad-routing-progress-plugin /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/kicad-routing-progress-plugin
-ln -sfn /home/emerson/Documentos/kicad-routing-progress-plugin /home/emerson/.local/share/kicad/10.0/scripting/plugins/kicad-routing-progress-plugin
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/kicad-routing-progress-plugin /home/emerson/.local/share/kicad/10.0/3rdparty/plugins/kicad-routing-progress-plugin
 ```
 
 En KiCad PCB Editor:

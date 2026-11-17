@@ -34,9 +34,9 @@ KiCad_3D_Model_Propagator/
 ```
 
 ## 🛠️ Instalación en KiCad
-El plugin ya está enlazado a tu directorio de plugins de KiCad 10:
+El plugin se instala mediante enlace simbólico a tu directorio de plugins de KiCad 10:
 ```bash
-ln -s /home/emerson/Documentos/KiCad_3D_Model_Propagator ~/.local/share/kicad/10.0/3rdparty/plugins/KiCad_3D_Model_Propagator
+ln -sfn /home/emerson/Documentos/Plugins-Kicad/KiCad_3D_Model_Propagator ~/.local/share/kicad/10.0/3rdparty/plugins/KiCad_3D_Model_Propagator
 ```
 
 Para recargar plugins en KiCad sin reiniciar:
