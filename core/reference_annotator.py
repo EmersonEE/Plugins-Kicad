@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
 
-from core.sexpr import SNode
+from core.sexpr import SAtom, SNode
 
 
 @dataclass
@@ -112,4 +112,6 @@ class ReferenceAnnotator:
             for path_node in project_node.get_children("path"):
                 ref_node = path_node.get_child("reference")
                 if ref_node and ref_node.items:
-                    ref_node.items[0] = new_ref
+                    # KiCad espera la referencia entrecomillada. Escribirla como átomo
+                    # suelto (p. ej. R?) rompe el lexer y el archivo no se puede abrir.
+                    ref_node.items[0] = SAtom(new_ref, is_quoted=True)

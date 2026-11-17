@@ -519,15 +519,16 @@ class MainWindow(wx.Frame):
             wx.MessageBox("Abre primero un archivo esquemático.", "Aviso", wx.ICON_WARNING)
             return
 
-        # Obtener símbolos seleccionados
-        selected_refs = []
-        for i in range(self.list_file_symbols.GetCount()):
-            if self.list_file_symbols.IsChecked(i):
-                ref = self.file_symbols[i].get_prop("Reference")
-                if ref:
-                    selected_refs.append(ref)
+        # Obtener las instancias de símbolos seleccionadas (por identidad de nodo).
+        # No se selecciona por referencia: con copias sin anotar (R?, K?, ...) eso
+        # arrastraría todas las copias previas y multiplicaría el esquemático sin control.
+        selected_symbols = [
+            self.file_symbols[i]
+            for i in range(self.list_file_symbols.GetCount())
+            if self.list_file_symbols.IsChecked(i)
+        ]
 
-        if not selected_refs:
+        if not selected_symbols:
             wx.MessageBox("Selecciona al menos un componente del bloque a duplicar.", "Aviso", wx.ICON_WARNING)
             return
 
@@ -537,8 +538,8 @@ class MainWindow(wx.Frame):
             if bak_path:
                 self.status_bar.SetStatusText(f"Respaldo creado: {os.path.basename(bak_path)}", 0)
 
-        # 2. Extraer bloque por referencias y conectividad
-        block = BlockDetector.from_schematic_by_references(self.sch_root, selected_refs)
+        # 2. Extraer bloque a partir de las instancias seleccionadas y su conectividad
+        block = BlockDetector.from_schematic_by_symbol_nodes(self.sch_root, selected_symbols)
 
         n_copies = self.spin_n.GetValue()
         pitch = self.spin_pitch.GetValue()

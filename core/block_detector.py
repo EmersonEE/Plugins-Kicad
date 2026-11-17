@@ -211,6 +211,58 @@ class BlockDetector:
         return cls.from_schematic_by_bbox(root, (min_x, min_y, max_x, max_y))
 
     @classmethod
+    def from_schematic_by_symbol_nodes(
+        cls, root: SNode, symbol_nodes: List[SNode], margin: float = 5.08
+    ) -> SchematicBlock:
+        """Extrae un bloque a partir de instancias concretas de símbolos (identidad de nodo).
+
+        A diferencia de ``from_schematic_by_references``, aquí la selección no se hace por
+        el texto de la referencia. Esto es imprescindible cuando el esquemático contiene
+        muchas copias sin anotar (``R?``, ``K?``, ...): buscar por referencia seleccionaría
+        todas las copias existentes y cada ejecución multiplicaría el esquemático de forma
+        exponencial. Seleccionar por nodo garantiza que solo se duplica lo que el usuario marcó.
+        """
+        if not symbol_nodes:
+            return SchematicBlock()
+
+        min_x = min_y = float("inf")
+        max_x = max_y = float("-inf")
+        found = False
+
+        for sym in symbol_nodes:
+            pos = sym.get_position()
+            if pos is None:
+                continue
+            x, y, _ = pos
+            min_x = min(min_x, x)
+            min_y = min(min_y, y)
+            max_x = max(max_x, x)
+            max_y = max(max_y, y)
+            found = True
+
+        if not found:
+            # Sin coordenadas no podemos delimitar: devolvemos solo los símbolos elegidos.
+            return SchematicBlock(items=list(symbol_nodes), lib_symbols=cls._get_lib_symbols(root))
+
+        bbox = (min_x - margin, min_y - margin, max_x + margin, max_y + margin)
+        block = cls.from_schematic_by_bbox(root, bbox)
+
+        # Garantizar que los símbolos elegidos estén siempre presentes (aunque su bbox los
+        # hubiera dejado fuera por coincidir justo sobre el borde).
+        present = {id(it) for it in block.items}
+        for sym in symbol_nodes:
+            if id(sym) not in present:
+                block.items.append(sym)
+                present.add(id(sym))
+
+        return block
+
+    @staticmethod
+    def _get_lib_symbols(root: SNode) -> List[SNode]:
+        lib_syms_node = root.get_child("lib_symbols")
+        return lib_syms_node.get_children("symbol") if lib_syms_node else []
+
+    @classmethod
     def from_schematic_by_bbox(
         cls, root: SNode, bbox: Tuple[float, float, float, float]
     ) -> SchematicBlock:

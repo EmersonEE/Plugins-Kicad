@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from core.block_detector import SchematicBlock
 from core.label_renamer import LabelRenamer, RenamingRule
 from core.reference_annotator import ReferenceAnnotationMode, ReferenceAnnotator
-from core.sexpr import SAtom, SExprParser, SExprSerializer, SNode
+from core.sexpr import SAtom, SExprSerializer, SNode
 
 
 KICAD_GRID_MM = 1.27  # Grilla estándar de KiCad (50 mil = 1.27 mm)
@@ -172,45 +172,46 @@ class BlockDuplicator:
 def build_kicad_clipboard_payload(
     raw_input: str, block: SchematicBlock, new_items: List[SNode]
 ) -> str:
-    """Construye un bloque S-expression válido para el portapapeles de KiCad (application/kicad)."""
-    cleaned = raw_input.strip()
-    if cleaned.startswith("("):
-        nodes_orig = SExprParser.parse_many(cleaned)
-        if len(nodes_orig) == 1 and nodes_orig[0].tag == "kicad_sch":
-            root = nodes_orig[0].clone()
-            for item in new_items:
-                root.add_child(item)
-            return SExprSerializer.serialize(root)
+    """Construye el bloque S-expression que KiCad espera en el portapapeles (application/kicad).
 
-    # Si no venía envuelto en (kicad_sch), lo construimos estrictamente
-    root = SNode("kicad_sch")
-    root.add_child(SNode("version", [SAtom(20260306)]))
-    root.add_child(SNode("generator", [SAtom("eeschema", is_quoted=True)]))
-    root.add_child(SNode("generator_version", [SAtom("10.0", is_quoted=True)]))
+    KiCad NO envuelve la selección copiada en ``(kicad_sch ...)``: el portapapeles contiene
+    únicamente ``(lib_symbols ...)`` seguido de los elementos seleccionados. Al pegar,
+    Eeschema llama a ``SCH_IO_KICAD_SEXPR::LoadContent`` con ``aIsCopyableOnly = true``, que
+    rechaza cualquier otro token de nivel superior (si no, lanza IO_ERROR y KiCad pega el
+    contenido como un simple objeto de texto).
+    """
+    out_nodes: List[SNode] = []
 
+    # La caché de símbolos es imprescindible para que KiCad resuelva los lib_id al pegar.
     if block.lib_symbols:
         lib_node = SNode("lib_symbols")
         for sym in block.lib_symbols:
             lib_node.add_child(sym.clone())
-        root.add_child(lib_node)
+        out_nodes.append(lib_node)
 
+    # Elementos originales + copias nuevas, todos al mismo nivel (formato de selección).
     for orig_item in block.items:
-        root.add_child(orig_item.clone())
+        out_nodes.append(orig_item.clone())
 
     for new_item in new_items:
-        root.add_child(new_item.clone())
+        out_nodes.append(new_item.clone())
 
-    return SExprSerializer.serialize(root)
+    return SExprSerializer.serialize(out_nodes)
 
 
 def write_kicad_clipboard(sexpr_text: str) -> bool:
     """Escribe datos en el portapapeles con el MIME type 'application/kicad' que KiCad requiere."""
     # 1. Wayland nativo mediante wl-copy con -t application/kicad
+    #    wl-copy deja un demonio sirviendo la selección; redirigimos sus descriptores
+    #    para que no herede stdout/stderr del proceso llamante (evita bloqueos).
     try:
         p = subprocess.Popen(
             ["wl-copy", "-t", "application/kicad"],
             stdin=subprocess.PIPE,
-            text=True
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            close_fds=True,
         )
         p.communicate(input=sexpr_text)
         if p.returncode == 0:

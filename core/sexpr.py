@@ -12,6 +12,14 @@ import re
 from typing import Any, Iterator, List, Optional, Tuple, Union
 
 
+def _format_coordinate(value: float) -> Union[int, float]:
+    """Formatea una coordenada como entero si es exacta, o con hasta 4 decimales."""
+    rounded = round(value, 4)
+    if rounded == int(rounded):
+        return int(rounded)
+    return rounded
+
+
 class SAtom:
     """Representa un valor atómico (símbolo o cadena entrecomillada)."""
 
@@ -150,15 +158,12 @@ class SNode:
     def set_position(self, x: float, y: float, r: Optional[float] = None) -> None:
         """Establece la posición (at X Y [R])."""
         at_node = self.get_child("at")
-        formatted_x = round(x, 4)
-        formatted_y = round(y, 4)
         new_items: List[Union[SNode, SAtom, str, int, float]] = [
-            SAtom(formatted_x if formatted_x != int(formatted_x) else int(formatted_x)),
-            SAtom(formatted_y if formatted_y != int(formatted_y) else int(formatted_y)),
+            SAtom(_format_coordinate(x)),
+            SAtom(_format_coordinate(y)),
         ]
         if r is not None:
-            formatted_r = round(r, 4)
-            new_items.append(SAtom(formatted_r if formatted_r != int(formatted_r) else int(formatted_r)))
+            new_items.append(SAtom(_format_coordinate(r)))
 
         if at_node:
             at_node.items = new_items
@@ -193,6 +198,9 @@ class SNode:
                         pass
 
         # Desplazar polilíneas o cables (pts (xy X Y) ...)
+        # OJO: los puntos (xy X Y) NO tienen un hijo (at ...). Hay que reemplazar sus dos
+        # átomos de coordenadas; llamar a set_position() insertaría un (at ...) y generaría
+        # puntos inválidos como (xy (at X Y) X Y), que KiCad rechaza al abrir.
         pts_node = self.get_child("pts")
         if pts_node:
             for pt in pts_node.get_children("xy"):
@@ -200,7 +208,8 @@ class SNode:
                     try:
                         px = float(str(pt.get_atom(0))) + dx
                         py = float(str(pt.get_atom(1))) + dy
-                        pt.set_position(px, py)
+                        pt.items[0] = SAtom(_format_coordinate(px))
+                        pt.items[1] = SAtom(_format_coordinate(py))
                     except ValueError:
                         pass
 

@@ -140,6 +140,81 @@ class TestBlockDuplicator(unittest.TestCase):
         for orig_ref, new_ref, idx in report.references_assigned:
             self.assertTrue(new_ref.endswith("?"), f"Expected question mark ref, got {new_ref}")
 
+    def test_clipboard_payload_is_bare_selection(self):
+        """KiCad pega desde un bloque SIN envoltorio (kicad_sch ...).
+
+        Si el payload lleva el envoltorio, LoadContent lanza IO_ERROR y KiCad pega
+        el contenido como un simple objeto de texto. Este test lo previene.
+        """
+        from core.block_duplicator import build_kicad_clipboard_payload
+
+        cfg = DuplicationConfig(
+            num_copies=4,
+            direction="vertical",
+            pitch_y_mm=50.8,
+            annotation_mode=ReferenceAnnotationMode.RESET_TO_QUESTION_MARK
+        )
+        duplicator = BlockDuplicator(cfg)
+        report = duplicator.duplicate_block(self.block)
+
+        payload = build_kicad_clipboard_payload(SAMPLE_RELAY_BLOCK, self.block, report.new_items)
+        nodes = SExprParser.parse_many(payload)
+
+        self.assertTrue(nodes)
+        self.assertTrue(all(n.tag != "kicad_sch" for n in nodes))
+
+        tags = [n.tag for n in nodes]
+        # 7 símbolos originales + 7 * 3 copias
+        self.assertEqual(tags.count("symbol"), 28)
+
+        # Si hay caché de símbolos, debe ir primero (como hace KiCad).
+        if "lib_symbols" in tags:
+            self.assertEqual(tags[0], "lib_symbols")
+
+    def test_copied_symbol_instance_reference_is_quoted(self):
+        """Las referencias dentro de (instances ...) deben ir entrecomilladas.
+
+        KiCad no puede abrir el esquemático si se escriben como átomos sueltos
+        (p. ej. ``R?`` sin comillas).
+        """
+        from core.block_duplicator import build_kicad_clipboard_payload
+
+        schematic = """(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "00000000-0000-0000-0000-000000000000")
+	(paper "A4")
+	(lib_symbols
+		(symbol "Device:R"
+			(property "Reference" "R" (at 0 0 0) (effects (font (size 1.27 1.27))))
+			(property "Value" "R" (at 0 0 0) (effects (font (size 1.27 1.27))))
+		)
+	)
+	(symbol (lib_id "Device:R") (at 50.8 50.8 0) (unit 1)
+		(uuid "20000000-0000-0000-0000-000000000001")
+		(property "Reference" "R5" (at 50.8 48.26 0) (effects (font (size 1.27 1.27))))
+		(property "Value" "1k" (at 50.8 53.34 0) (effects (font (size 1.27 1.27))))
+		(instances
+			(project "demo"
+				(path "/00000000-0000-0000-0000-000000000000"
+					(reference "R5") (unit 1)
+				)
+			)
+		)
+	)
+)"""
+        block = BlockDetector.from_clipboard_text(schematic)
+        self.assertIsNotNone(block)
+
+        duplicator = BlockDuplicator(DuplicationConfig(num_copies=2))
+        report = duplicator.duplicate_block(block)
+        payload = build_kicad_clipboard_payload(schematic, block, report.new_items)
+
+        self.assertIn('"R?"', payload)
+        # No debe quedar ninguna referencia sin comillas dentro de (reference ...).
+        self.assertNotRegex(payload, r'\(reference\s+[A-Za-z#]+\?')
+
     def test_relay_block_duplication_sequential(self):
         cfg = DuplicationConfig(
             num_copies=4,

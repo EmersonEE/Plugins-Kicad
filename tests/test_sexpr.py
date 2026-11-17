@@ -66,6 +66,30 @@ class TestSExpr(unittest.TestCase):
         self.assertAlmostEqual(prop_pos[0], 125.4, places=3)
         self.assertAlmostEqual(prop_pos[1], 148.8, places=3)
 
+    def test_shift_wire_points_does_not_insert_at(self):
+        """Desplazar un cable debe actualizar sus (xy X Y), nunca añadir un (at ...)."""
+        wire = SExprParser.parse(
+            '(wire (pts (xy 50.8 50.8) (xy 63.5 50.8)) '
+            '(stroke (width 0) (type default)) (uuid "c0000000-0000-0000-0000-000000000001"))'
+        )
+        wire.shift_position(0.0, 50.8)
+
+        pts = wire.get_child("pts")
+        xy_nodes = pts.get_children("xy")
+        self.assertEqual(len(xy_nodes), 2)
+
+        for pt in xy_nodes:
+            # Exactamente dos átomos de coordenadas y ningún hijo (at ...).
+            self.assertEqual(len(pt.items), 2)
+            self.assertFalse(any(isinstance(i, SNode) for i in pt.items))
+
+        self.assertEqual(str(xy_nodes[0].get_atom(0)), "50.8")
+        self.assertEqual(str(xy_nodes[0].get_atom(1)), "101.6")
+        self.assertEqual(str(xy_nodes[1].get_atom(1)), "101.6")
+
+        # El texto serializado no debe contener (xy (at ...
+        self.assertNotIn("(xy (at", SExprSerializer.serialize(wire))
+
     def test_clone_independence(self):
         root = SExprParser.parse(SAMPLE_TEXT)
         sym = root.get_child("symbol")
